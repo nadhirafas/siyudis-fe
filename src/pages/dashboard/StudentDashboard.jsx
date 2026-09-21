@@ -122,7 +122,7 @@ function StudentDashboard() {
           {/* PENGAJUAN YUDISIUM */}
           <button
             type="button"
-            onClick={() => navigate('/pengajuan')}
+            onClick={() => navigate('/pengajuan-yudisium')}
             className="
               mt-2
               flex
@@ -530,7 +530,7 @@ function StudentDashboard() {
 
             <button
               type="button"
-              onClick={() => navigate('/pengajuan')}
+              onClick={() => navigate('/pengajuan-yudisium')}
               className="
                 mt-6
                 inline-flex
@@ -664,7 +664,7 @@ function StudentDashboard() {
 
                 <button
                   type="button"
-                  onClick={() => navigate('/pengajuan')}
+                  onClick={() => navigate('/pengajuan-yudisium')}
                   className="
                     mt-auto
                     flex
