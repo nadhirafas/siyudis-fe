@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate } from 'react-router-dom'
 
 import {
   Home,
@@ -28,15 +28,11 @@ function ProfilePage() {
   // USER DATA
   // =========================================================
 
-  const initialUser = getUser() || {
-    name: 'Nadhira',
-    email: 'nadhirafarraaisyasui@mail.ugm.ac.id',
-    photo: null,
-  }
+  const initialUser = getUser()
 
   const [user, setUser] = useState(initialUser)
-  const [name, setName] = useState(initialUser.name)
-  const [photo, setPhoto] = useState(initialUser.photo || null)
+  const [name, setName] = useState(initialUser?.nama || '')
+  const [photo, setPhoto] = useState(initialUser?.avatar || null)
 
   // =========================================================
   // UPLOAD FOTO
@@ -104,8 +100,8 @@ function ProfilePage() {
 
     const updatedUser = {
       ...user,
-      name: trimmedName,
-      photo,
+      nama: trimmedName,
+      avatar: photo,
     }
 
     localStorage.setItem(
@@ -115,6 +111,7 @@ function ProfilePage() {
 
     setUser(updatedUser)
     setName(trimmedName)
+    setPhoto(photo)
 
     alert('Perubahan profil berhasil disimpan.')
   }
@@ -308,14 +305,14 @@ function ProfilePage() {
           {/* USER */}
           <div className="flex items-center gap-[11px]">
 
-            <ProfileAvatar
-              photo={photo}
-              size="small"
-            />
+          <ProfileAvatar
+            photo={photo}
+            size="small"
+          />
 
-            <span className="text-[13px] font-bold text-[#111111]">
-              {user.name}
-            </span>
+          <span className="text-[13px] font-bold text-[#111111]">
+            {user?.nama || 'Mahasiswa'}
+          </span>
 
           </div>
         </header>
@@ -423,7 +420,6 @@ function ProfilePage() {
                     "
                   >
                     {photo ? (
-                      /* FOTO YANG DIUPLOAD - BULAT */
                       <img
                         src={photo}
                         alt="Foto profile"
@@ -433,9 +429,9 @@ function ProfilePage() {
                           rounded-full
                           object-cover
                         "
+                        onError={() => setPhoto(null)}
                       />
                     ) : (
-                      /* FOTO DEFAULT - BULAT */
                       <DefaultProfilePhoto />
                     )}
                   </div>
@@ -722,7 +718,7 @@ function ProfilePage() {
 
                     <input
                       type="email"
-                      value={user.email}
+                      value={user?.email}
                       disabled
                       className="
                         flex-1
@@ -815,14 +811,6 @@ function ProfilePage() {
 
 /* =============================================================
    DEFAULT PROFILE PHOTO
-
-   Frame luar:
-   - kotak rounded
-
-   Foto di dalam:
-   - BULAT
-   - abu-abu
-   - kepala + badan putih
 ============================================================= */
 
 function DefaultProfilePhoto() {
@@ -837,13 +825,12 @@ function DefaultProfilePhoto() {
         overflow-hidden
       "
     >
-
       {/* HEAD */}
       <div
         className="
           absolute
           left-1/2
-          top-[31px]
+          top-[25px]
           -translate-x-1/2
           h-[38px]
           w-[38px]
@@ -857,15 +844,14 @@ function DefaultProfilePhoto() {
         className="
           absolute
           left-1/2
-          bottom-[18px]
+          bottom-[17px]
           -translate-x-1/2
-          h-[43px]
-          w-[75px]
+          h-[42px]
+          w-[74px]
           rounded-t-full
           bg-white
         "
       />
-
     </div>
   )
 }
@@ -875,9 +861,13 @@ function DefaultProfilePhoto() {
 ============================================================= */
 
 function ProfileAvatar({ photo, size }) {
+  const [imageError, setImageError] = useState(false)
+
   if (size !== 'small') {
     return null
   }
+
+  const showPhoto = photo && !imageError
 
   return (
     <div
@@ -892,21 +882,21 @@ function ProfileAvatar({ photo, size }) {
         justify-center
       "
     >
-      {photo ? (
+      {showPhoto ? (
         <img
           src={photo}
           alt="Foto profil"
           className="h-full w-full rounded-full object-cover"
+          onError={() => setImageError(true)}
         />
       ) : (
         <div className="relative h-full w-full">
-
           {/* HEAD */}
           <div
             className="
               absolute
               left-1/2
-              top-[8px]
+              top-[7px]
               -translate-x-1/2
               h-[12px]
               w-[12px]
@@ -928,7 +918,6 @@ function ProfileAvatar({ photo, size }) {
               bg-white
             "
           />
-
         </div>
       )}
     </div>

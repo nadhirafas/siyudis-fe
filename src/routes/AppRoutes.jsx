@@ -1,15 +1,17 @@
-import { Routes, Route } from 'react-router'
+import { Routes, Route } from 'react-router-dom'
 
 import LoginPage from '../pages/auth/LoginPage'
 import StudentDashboard from '../pages/dashboard/StudentDashboard'
 import ProfilePage from '../pages/dashboard/ProfilePage'
 import FormPengajuanPage from '../pages/yudisium/FormPengajuanPage'
 import { DocumentPreviewPage } from '../pages/yudisium/FormPengajuanPage'
+import AuthCallback from '../pages/auth/AuthCallback'
 
 function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<LoginPage />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/dashboard" element={<StudentDashboard />} />
       <Route path="/profile" element={<ProfilePage />} />
       <Route

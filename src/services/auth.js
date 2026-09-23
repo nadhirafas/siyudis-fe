@@ -49,3 +49,15 @@ export function getUser() {
 export function clearUser() {
   localStorage.removeItem('siyudis_user')
 }
+
+export function saveToken(token) {
+  localStorage.setItem('siyudis_token', token)
+}
+
+export function getToken() {
+  return localStorage.getItem('siyudis_token')
+}
+
+export function clearToken() {
+  localStorage.removeItem('siyudis_token')
+}
