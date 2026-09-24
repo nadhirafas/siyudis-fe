@@ -58,12 +58,12 @@ const DEFAULT_STATUS = {
 
 
 // =============================================================
-// GET STATUS DARI LOCAL STORAGE
+// GET STATUS DARI SESSION STORAGE
 // =============================================================
 
 function getStoredStatus() {
   try {
-    const stored = localStorage.getItem(
+    const stored = sessionStorage.getItem(
       'siyudis_yudisium_status'
     )
 

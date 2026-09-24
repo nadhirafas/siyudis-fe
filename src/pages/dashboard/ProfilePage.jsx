@@ -104,7 +104,7 @@ function ProfilePage() {
       avatar: photo,
     }
 
-    localStorage.setItem(
+    sessionStorage.setItem(
       'siyudis_user',
       JSON.stringify(updatedUser)
     )

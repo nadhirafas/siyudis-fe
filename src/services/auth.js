@@ -29,11 +29,11 @@ export async function loginWithGoogle() {
 // USER
 // =========================================================
 export function saveUser(user) {
-  localStorage.setItem('siyudis_user', JSON.stringify(user))
+  sessionStorage.setItem('siyudis_user', JSON.stringify(user))
 }
 
 export function getUser() {
-  const user = localStorage.getItem('siyudis_user')
+  const user = sessionStorage.getItem('siyudis_user')
 
   if (!user) {
     return null
@@ -47,17 +47,17 @@ export function getUser() {
 }
 
 export function clearUser() {
-  localStorage.removeItem('siyudis_user')
+  sessionStorage.removeItem('siyudis_user')
 }
 
 export function saveToken(token) {
-  localStorage.setItem('siyudis_token', token)
+  sessionStorage.setItem('siyudis_token', token)
 }
 
 export function getToken() {
-  return localStorage.getItem('siyudis_token')
+  return sessionStorage.getItem('siyudis_token')
 }
 
 export function clearToken() {
-  localStorage.removeItem('siyudis_token')
+  sessionStorage.removeItem('siyudis_token')
 }

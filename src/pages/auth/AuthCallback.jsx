@@ -18,7 +18,7 @@ function AuthCallback() {
           throw new Error('Token login tidak ditemukan')
         }
 
-        localStorage.setItem('siyudis_token', token)
+        sessionStorage.setItem('siyudis_token', token)
 
         const API_URL = import.meta.env.VITE_API_URL
 
