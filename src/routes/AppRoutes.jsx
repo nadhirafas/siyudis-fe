@@ -6,6 +6,7 @@ import LoginPage from '../pages/auth/LoginPage'
 import StudentDashboard from '../pages/dashboard/StudentDashboard'
 import ProfilePage from '../pages/dashboard/ProfilePage'
 import FormPengajuanPage from '../pages/yudisium/FormPengajuanPage'
+import PanduanDokumenPage from '../pages/panduan/PanduanDokumenPage'
 
 function AppRoutes() {
   return (
@@ -15,6 +16,8 @@ function AppRoutes() {
       <Route path="/profile" element={<ProfilePage />} />
 
       <Route path="/pengajuan-yudisium" element={<FormPengajuanPage />} />
+      <Route path="/panduan" element={<PanduanDokumenPage />} />
+
     </Routes>
   )
 }

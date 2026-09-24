@@ -26,10 +26,11 @@ import {
 import { getUser, clearUser } from '../../services/auth'
 import ugmLogo from '../../assets/ugm-logo.png'
 
-// Mengubah URL polos di dalam teks deskripsi jadi link yang beneran bisa diklik,
-// buka di tab baru. Catatan: frasa "Lihat panduan" di deskripsi dokumen #10 gak
-// punya URL eksplisit di datanya, jadi tetap teks biasa (gak bisa di-link-kan
-// tanpa alamat tujuannya) — kasih tau aku kalau ada link resminya, nanti aku pasang.
+function renderDescription(description) {
+  if (typeof description !== 'string') return description
+  return linkifyText(description)
+}
+
 function linkifyText(text) {
   const urlRegex = /(https?:\/\/[^\s]+)/g
   return text.split(urlRegex).map((part, i) => {
@@ -53,9 +54,6 @@ function linkifyText(text) {
   })
 }
 
-// accept disamakan persis dengan label "type" yang ditampilkan ke user.
-// badge 'Wajib TRI' sekarang gak lagi bikin dokumen wajib diupload sebelum submit
-// (lihat requiredDocuments di komponen utama) — sesuai permintaan terbaru.
 const documents = [
   { id: 1, title: 'Form Pengajuan Yudisium', description: 'Unduh dan lengkapi template form pengajuan yudisium resmi DTEDI yang telah ditandatangani.', accept: '.pdf', type: 'PDF' },
   { id: 2, title: 'Form Pembatalan Mata Kuliah Pilihan', description: 'Unduh dan lengkapi template form pembatalan mata kuliah pilihan yang telah ditandatangani mahasiswa dan ketua program studi.', accept: '.pdf,.png', type: 'PDF/PNG' },
@@ -64,11 +62,30 @@ const documents = [
   { id: 5, title: 'Transkrip Nilai Sementara', description: 'Transkrip nilai diambil dari SIMASTER, dan wajib mengisi form http://ugm.id/ProyekAkhirDTEDI sebagai syarat pemrosesan/terbitnya nilai PA, dan apabila terdapat nilai kosong/T, laporkan kepada Bagian Akademik.', accept: '.pdf', type: 'PDF' },
   { id: 6, title: 'Surat Tanda Terima Menyerahkan Skripsi dan Bebas Perpustakaan UGM.', description: 'Melakukan unggah Proyek Akhir secara mandiri di https://simaster.ugm.ac.id, dengan panduan tersedia di https://lib.ugm.ac.id/panduan-unggah-mandiri.', accept: '.pdf,.png', type: 'PDF/PNG' },
   { id: 7, title: 'Ijazah Terakhir', description: 'Pindaian ijazah terakhir, bukan sertifikat hasil ujian.', accept: '.pdf,.png', type: 'PDF/PNG' },
-  // ⚠️ Screenshot referensimu beda-beda soal batas ukuran (5MB vs 10MB untuk dokumen ini).
-  // Dipakai 5MB dulu — pastikan lagi ke PM/desainer mana yang benar.
   { id: 8, title: 'Sertifikat PPSMB', description: 'Pindaian sertifikat Pelatihan Pembelajar Sukses bagi Mahasiswa Baru.', accept: '.pdf,.png', type: 'PDF/PNG' },
   { id: 9, title: 'Hasil Cek Plagiasi', description: 'Hasil cek plagiasi harus memenuhi:\nPersentase kemiripan maksimal 25%.\nDitandatangani dosen pembimbing tugas akhir (DPTA).', accept: '.pdf,.png', type: 'PDF/PNG' },
-  { id: 10, title: 'Sertifikat Kemampuan Bahasa Inggris', description: 'Skor minimal: TEVoCS≥60 / AcEPT≥209 / IELTS≥4.5 / TOEIC≥495 / TOEFL IBT≥52 / TOEFL ITP≥453. Belum memenuhi? Lihat panduan. Lolos PKM: TEVoCS berapa pun berlaku. Substitusi lain: Pengurus/Panitia/Juara Lomba (maks 5; Nasional=1, Universitas=2, SV=3, Departemen=5).', accept: '.pdf,.png', type: 'PDF/PNG' },
+  {
+    id: 10,
+    title: 'Sertifikat Kemampuan Bahasa Inggris',
+    description: (
+      <>
+        Skor minimal: TEVoCS≥60 / AcEPT≥209 / IELTS≥4.5 / TOEIC≥495 / TOEFL IBT≥52 / TOEFL
+        ITP≥453. Belum memenuhi?{' '}
+        <a
+          href="https://tedi.sv.ugm.ac.id/id/2026/08/07/panduan-syarat-bahasa-inggris-untuk-yudisium-bagi-angkatan-2020-2023/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[#1f3d6d] underline hover:text-[#0f2038]"
+        >
+          Lihat panduan
+        </a>
+        . Lolos PKM: TEVoCS berapa pun berlaku. Substitusi lain: Pengurus/Panitia/Juara Lomba
+        (maks 5; Nasional=1, Universitas=2, SV=3, Departemen=5).
+      </>
+    ),
+    accept: '.pdf,.png',
+    type: 'PDF/PNG',
+  },
   { id: 11, title: 'Sertifikat Kompetensi', description: 'Wajib untuk prodi TRI, opsional untuk prodi lain. Minimal level associate, dengan skor hasil dan tanggal berlaku yang ditunjukkan, serta dicantumkan dalam Berita Acara Yudisium (maksimal 5 sertifikat).', accept: '.pdf,.png', type: 'PDF/PNG', badge: 'Wajib TRI', optionalBadge: 'Prodi Lain Opsional' },
   { id: 12, title: 'Lembar Halaman Pengesahan', description: 'Pindaian lembar pengesahan bertandatangan lengkap penguji, pembimbing, dan Kepala Departemen DTEDI.', accept: '.pdf,.png', type: 'PDF/PNG' },
   { id: 13, title: 'Unggah Draft Publikasi/Makalah', description: 'Angkatan 2021 & sebelumnya: Prosiding konferensi, HAKI, atau jurnal.\nAngkatan 2022 & seterusnya: Draft publikasi yang disetujui dosen pembimbing.\nTRI, TRIK & TRPL: draft jurnal acc pembimbing.\nTRE: wajib submit jurnal.', accept: '.pdf,.png', type: 'PDF/PNG' },
@@ -287,7 +304,7 @@ function DocumentCard({ document, file, error, disabled, onFileChange, onErrorCh
         </div>
 
         <p className="mt-4 whitespace-pre-line text-sm leading-6 text-gray-600">
-          {linkifyText(document.description)}
+          {renderDescription(document.description)}
         </p>
 
         <div className="mt-auto flex items-center gap-2 rounded-lg border border-dashed border-[#cfd7e6] bg-white/50 px-3 py-2.5 text-xs text-[#66738a]">
@@ -334,7 +351,7 @@ function DocumentCard({ document, file, error, disabled, onFileChange, onErrorCh
       </div>
 
       <p className="mt-4 whitespace-pre-line text-sm leading-6 text-gray-600">
-        {linkifyText(document.description)}
+        {renderDescription(document.description)}
       </p>
 
       <div className="mt-auto">
@@ -471,6 +488,7 @@ function SelectField({ label, value, onChange, onBlur, error, placeholder, optio
 }
 
 export default function FormPengajuanPage() {
+  const navigate = useNavigate()
   const [files, setFiles] = useState({})
   const [errors, setErrors] = useState({})
   const [form, setForm] = useState({
@@ -587,7 +605,11 @@ export default function FormPengajuanPage() {
                   </div>
                   <p className="mt-3 text-sm leading-6 text-gray-600">{item.text}</p>
                   {item.link && (
-                    <button type="button" className="mt-2 text-xs font-bold text-[#172f55]">
+                    <button
+                      type="button"
+                      onClick={() => navigate('/panduan')}
+                      className="mt-2 text-xs font-bold text-[#172f55] hover:underline"
+                    >
                       Lihat Panduan &amp; Dokumen →
                     </button>
                   )}
