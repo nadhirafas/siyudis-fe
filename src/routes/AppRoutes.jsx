@@ -1,10 +1,11 @@
-import { Routes, Route } from 'react-router'
+// src/routes/AppRoutes.jsx
+import React from 'react'
+import { Routes, Route } from 'react-router-dom'
 
 import LoginPage from '../pages/auth/LoginPage'
 import StudentDashboard from '../pages/dashboard/StudentDashboard'
 import ProfilePage from '../pages/dashboard/ProfilePage'
 import FormPengajuanPage from '../pages/yudisium/FormPengajuanPage'
-import { DocumentPreviewPage } from '../pages/yudisium/FormPengajuanPage'
 
 function AppRoutes() {
   return (
@@ -12,15 +13,8 @@ function AppRoutes() {
       <Route path="/" element={<LoginPage />} />
       <Route path="/dashboard" element={<StudentDashboard />} />
       <Route path="/profile" element={<ProfilePage />} />
-      <Route
-        path="/pengajuan-yudisium"
-        element={<FormPengajuanPage />}
-      />
 
-      <Route
-        path="/dokumen/:id"
-        element={<DocumentPreviewPage />}
-      />
+      <Route path="/pengajuan-yudisium" element={<FormPengajuanPage />} />
     </Routes>
   )
 }
