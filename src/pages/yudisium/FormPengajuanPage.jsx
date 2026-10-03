@@ -1,6 +1,5 @@
 import { useState, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
-
 import {
   Home,
   FileText,
@@ -12,15 +11,16 @@ import {
   Eye,
   FileUp,
   Megaphone,
-  PenTool,
+  Feather,
   Info,
   AlertTriangle,
   Ban,
   Send,
   CheckCircle2,
   MinusCircle,
-  CalendarDays,
-  Award,
+  CalendarClock,
+  BadgeCheck,
+  Gavel
 } from 'lucide-react'
 
 import { getUser, clearUser } from '../../services/auth'
@@ -67,6 +67,7 @@ const documents = [
   {
     id: 10,
     title: 'Sertifikat Kemampuan Bahasa Inggris',
+
     description: (
       <>
         Skor minimal: TEVoCS≥60 / AcEPT≥209 / IELTS≥4.5 / TOEIC≥495 / TOEFL IBT≥52 / TOEFL
@@ -153,7 +154,6 @@ function Sidebar() {
   )
 }
 
-// Dropdown profil dikembalikan (sesuai screenshot), spacing dilebarkan biar gak "mepet".
 function Header() {
   const navigate = useNavigate()
 
@@ -171,93 +171,114 @@ function Header() {
     navigate('/')
   }
 
+  // Avatar Default dengan Siluet Putih di Dalam Lingkaran Abu-abu
+  const DefaultAvatarIcon = () => (
+    <div className="relative h-full w-full rounded-full bg-[#c7cbd1] flex items-center justify-center overflow-hidden">
+      <div className="absolute top-[22%] h-[36%] w-[36%] rounded-full bg-white" />
+      <div className="absolute bottom-[-10%] h-[50%] w-[75%] rounded-full bg-white" />
+    </div>
+  )
+
   return (
     <header className="fixed left-[272px] right-0 top-0 z-30 flex h-[88px] items-center justify-between border-b border-gray-100 bg-white px-8">
       <div>
-        <h1 className="text-[28px] font-bold leading-tight text-gray-950">Pengajuan Yudisium</h1>
+        <h1 className="text-[28px] font-bold leading-tight text-gray-950">Panduan &amp; Dokumen</h1>
         <p className="mt-1 text-sm text-gray-500">Sistem Informasi Yudisium Terpadu DTEDI SV UGM</p>
       </div>
 
       <div className="relative">
+        {/* TOMBOL HEADER PROFIL (GAP DIREPATKAN KE GAP-2/2.5) */}
         <button
           type="button"
           onClick={() => setProfileOpen((open) => !open)}
-          className="flex items-center gap-3 rounded-xl px-2 py-2"
+          className="flex items-center gap-2.5 rounded-full py-1 px-1.5 hover:bg-gray-50 transition"
         >
           {user?.photo ? (
-            <img src={user.photo} alt="" className="h-11 w-11 rounded-full object-cover" />
+            <img src={user.photo} alt="" className="h-10 w-10 rounded-full object-cover" />
           ) : (
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#c7cbd1]">
-              <UserRound size={27} strokeWidth={2} className="text-white" />
+            <div className="h-10 w-10 shrink-0">
+              <DefaultAvatarIcon />
             </div>
           )}
-          <p className="max-w-[260px] truncate text-[14px] font-bold text-gray-900">{displayName}</p>
-          <ChevronDown
-            size={18}
-            className={`text-gray-500 transition ${profileOpen ? 'rotate-180' : ''}`}
-          />
+
+          <span className="text-[15px] font-bold text-gray-900 tracking-tight">
+            {displayName}
+          </span>
         </button>
 
+        {/* CARD POPOUT DETAIL PROFIL */}
         {profileOpen && (
-          <div className="absolute right-0 top-[68px] w-[420px] overflow-hidden rounded-2xl border border-[#e0e5ed] bg-white shadow-xl">
-            <div className="px-6 pt-6">
-              <p className="border-b border-[#edf0f5] pb-5 text-sm font-semibold text-gray-500">
+          <div className="absolute right-0 top-[58px] w-[380px] overflow-hidden rounded-[24px] border border-gray-200/80 bg-white shadow-xl z-50 p-6">
+            
+            {/* Email + Garis Bawah */}
+            <div className="border-b border-gray-100 pb-4">
+              <p className="text-xs font-semibold text-gray-400 text-left">
                 {email}
               </p>
-
-              <div className="flex flex-col items-center py-6">
-                <div className="relative">
-                  {user?.photo ? (
-                    <img
-                      src={user.photo}
-                      alt=""
-                      className="h-24 w-24 rounded-full border-4 border-[#e8edf5] object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-24 w-24 items-center justify-center rounded-full border-4 border-[#e8edf5] bg-[#c7cbd1]">
-                      <UserRound size={53} strokeWidth={2} className="text-white" />
-                    </div>
-                  )}
-                  <span className="absolute bottom-1 right-1 h-5 w-5 rounded-full border-2 border-white bg-[#5dbb67]" />
-                </div>
-                <p className="mt-4 text-[18px] font-bold text-gray-900">{displayName}</p>
-              </div>
             </div>
 
-            <div className="mx-6 border-t border-[#edf0f5]" />
+            {/* Avatar Besar + Ring Biru Muda Halus + Siluet Putih + Status Hijau */}
+            <div className="flex flex-col items-center py-6">
+              <div className="relative flex items-center justify-center">
+                
+                {/* Ring Bingkai Luar (#e8edf5) + Container Avatar Besar */}
+                <div className="h-24 w-24 rounded-full border-[5px] border-[#e8edf5] bg-[#c7cbd1] flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
+                  {user?.photo ? (
+                    <img src={user.photo} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <DefaultAvatarIcon />
+                  )}
+                </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                setProfileOpen(false)
-                navigate('/profile')
-              }}
-              className="flex w-full items-center gap-4 px-7 py-6 text-left hover:bg-gray-50"
-            >
-              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#eef4ff] text-[#163b6c]">
-                <UserRound size={20} />
-              </span>
-              <span>
-                <span className="block text-sm font-bold text-gray-900">Profil Saya</span>
-                <span className="mt-1 block text-xs text-gray-500">Ubah nama dan foto profil</span>
-              </span>
-            </button>
+                {/* Titik Status Hijau */}
+                <span className="absolute bottom-0.5 right-0.5 h-5 w-5 rounded-full border-[2.5px] border-white bg-[#5dbb67]" />
+              </div>
 
-            <div className="mx-6 border-t border-[#edf0f5]" />
+              <p className="mt-4 text-[18px] font-bold text-gray-900 text-center tracking-tight">
+                {displayName}
+              </p>
+            </div>
 
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="flex w-full items-center gap-4 px-7 py-6 text-left hover:bg-red-50"
-            >
-              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#fde8e7] text-[#d9362b]">
-                <LogOut size={20} />
-              </span>
-              <span>
-                <span className="block text-sm font-bold text-[#d9362b]">Keluar / Logout</span>
-                <span className="mt-1 block text-xs text-red-400">Akhiri sesi akun di perangkat ini</span>
-              </span>
-            </button>
+            {/* List Menu Pilihan */}
+            <div className="border-t border-gray-100 pt-3 space-y-1.5">
+              
+              {/* Menu Profil Saya */}
+              <button
+                type="button"
+                onClick={() => {
+                  setProfileOpen(false)
+                  navigate('/profile')
+                }}
+                className="flex w-full items-center gap-4 rounded-xl p-2.5 text-left hover:bg-gray-50 transition"
+              >
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#eef4ff] text-[#163b6c]">
+                  <UserRound size={20} />
+                </span>
+                <div>
+                  <span className="block text-sm font-bold text-gray-900">Profil Saya</span>
+                  <span className="text-xs text-gray-400">Ubah nama dan foto profil</span>
+                </div>
+              </button>
+
+              {/* Garis Pemisah Antar Menu */}
+              <div className="border-t border-gray-100 my-1" />
+
+              {/* Menu Logout */}
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="flex w-full items-center gap-4 rounded-xl p-2.5 text-left hover:bg-red-50/60 transition"
+              >
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#fde8e7] text-[#d9362b]">
+                  <LogOut size={20} />
+                </span>
+                <div>
+                  <span className="block text-sm font-bold text-[#d9362b]">Keluar / Logout</span>
+                  <span className="text-xs text-red-400">Akhiri sesi akun di perangkat ini</span>
+                </div>
+              </button>
+
+            </div>
           </div>
         )}
       </div>
@@ -405,12 +426,12 @@ function DocumentCard({ document, file, error, disabled, onFileChange, onErrorCh
             )}
 
             <label
-              className={`flex h-9 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border bg-white text-xs font-semibold ${
+              className={`flex h-9 w-full cursor-pointer items-center justify-center gap-3 rounded-lg border bg-white pl-4 text-xs font-semibold ${
                 error ? 'border-red-400 text-red-500' : 'border-[#d7dce6] text-gray-700'
               }`}
             >
               <FileUp size={15} className="shrink-0" />
-              Pilih Berkas {document.type}
+              <span>Pilih Berkas {document.type}</span>
               <span className="ml-auto pr-3 font-normal text-gray-400">Maks 5MB</span>
               <input
                 type="file"
@@ -452,8 +473,7 @@ function TextField({ label, value, onChange, placeholder, error, onBlur }) {
   )
 }
 
-// Select dengan chevron custom (bukan panah bawaan browser) + padding kanan
-// secukupnya biar gak "mepet" sama teks/chevronnya.
+
 function SelectField({ label, value, onChange, onBlur, error, placeholder, options }) {
   return (
     <div>
@@ -582,26 +602,28 @@ export default function FormPengajuanPage() {
             <div className="mt-5 grid grid-cols-3 gap-4">
               {[
                 {
-                  icon: <BookOpen size={18} />,
+                  icon: <BookOpen size={18} className="text-[#855b14]" />,
                   title: 'Persyaratan & Dokumen',
                   text: 'Persyaratan lengkap serta berkas template resmi dapat diakses dan diunduh melalui menu Panduan & Dokumen.',
                   link: true,
                 },
                 {
-                  icon: <CalendarDays size={18} />,
+                  icon: <CalendarClock size={18} className="text-[#855b14]" />,
                   title: 'Sidang Pleno Yudisium',
                   text: 'Penetapan kelulusan dilaksanakan melalui Rapat Pengurus Departemen sesuai jadwal kalender akademik DTEDI.',
                 },
                 {
-                  icon: <Award size={18} />,
+                  icon: <BadgeCheck size={18} className="text-[#855b14]" />,
                   title: 'Penerbitan Berita Acara',
                   text: 'Dokumen Berita Acara resmi bertanda tangan elektronik dapat diunduh pada menu Berita Acara setelah seluruh verifikasi tuntas disahkan.',
                 },
               ].map((item) => (
                 <div key={item.title} className="rounded-xl bg-[#f0f3fc] p-4">
-                  <div className="flex items-center gap-2 text-[#1f3d6d]">
+                  <div className="flex items-center gap-2">
+                    {/* Ikon memakai warna cokelat dari properti className masing-masing */}
                     {item.icon}
-                    <h4 className="font-bold">{item.title}</h4>
+                    {/* Warna biru tua khusus dipasang di teks judul saja */}
+                    <h4 className="font-bold text-[#1f3d6d]">{item.title}</h4>
                   </div>
                   <p className="mt-3 text-sm leading-6 text-gray-600">{item.text}</p>
                   {item.link && (
@@ -766,8 +788,9 @@ export default function FormPengajuanPage() {
 
           <section className="mt-6 rounded-2xl bg-white p-7 shadow-sm">
             <div className="flex items-center gap-3">
+              {/* Box Icon Palu Sidang (Gavel) Latar Kuning/Krim Halus */}
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#fff2ca] text-[#8a6b00]">
-                <PenTool size={20} />
+                <Gavel size={20} />
               </div>
               <h2 className="font-bold text-[#172f55]">Pakta Integritas Mahasiswa Yudisium DTEDI</h2>
             </div>
@@ -794,42 +817,62 @@ export default function FormPengajuanPage() {
           </section>
 
           <section
-            className={`mt-6 flex items-center justify-between rounded-xl border bg-white px-7 py-5 ${
-              footerState === 'error' ? 'border-red-200' : 'border-gray-200'
-            }`}
-          >
-            <div className="flex max-w-[620px] items-start gap-3">
-              {footerState === 'error' ? (
-                <AlertTriangle size={19} className="mt-1 shrink-0 text-red-500" />
-              ) : (
-                <Info size={19} className="mt-1 shrink-0 text-[#8a6b00]" />
-              )}
-              <p className={`text-sm ${footerState === 'error' ? 'text-red-500' : 'text-gray-600'}`}>
-                {footerState === 'error'
-                  ? 'Lengkapi semua field dan dokumen yang ditandai merah sebelum mengirimkan permohonan yudisium.'
-                  : 'Pastikan Anda telah memeriksa kesesuaian berkas sebelum mengirimkan permohonan yudisium.'}
-              </p>
-            </div>
+          className={`mt-6 flex items-center justify-between rounded-2xl border bg-white px-7 py-5 transition ${
+            footerState === 'error' ? 'border-[#f2d4ce]' : 'border-gray-200'
+          }`}
+        >
+          {/* AREA TEKS PERINGATAN / INFO */}
+          <div className="flex max-w-[620px] items-center gap-3.5">
+            {footerState === 'error' ? (
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#f7ece9] text-[#a04638]">
+                <AlertTriangle size={18} strokeWidth={2.2} />
+              </div>
+            ) : (
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#fff2ca] text-[#8a6b00]">
+                <Info size={18} strokeWidth={2.2} />
+              </div>
+            )}
 
-            <button
-              type="button"
-              disabled={!canSubmit}
-              onClick={() => {
-                setSubmitAttempted(true)
-                if (canSubmit) {
-                  alert('Pengajuan yudisium siap dikirim.')
-                }
-              }}
-              className={`flex h-12 min-w-[260px] items-center justify-center gap-2 rounded-xl px-7 text-sm font-semibold ${
-                canSubmit
-                  ? 'bg-[#142f57] text-white hover:bg-[#102647]'
-                  : 'cursor-not-allowed bg-[#d6dce7] text-[#8b96a8]'
+            <p
+              className={`text-sm leading-relaxed ${
+                footerState === 'error'
+                  ? 'font-semibold text-[#9e3a2b]'
+                  : 'font text-gray-600'
               }`}
             >
-              Ajukan Berkas Yudisium
-              {footerState === 'error' ? <Ban size={17} /> : <Send size={17} />}
-            </button>
-          </section>
+              {footerState === 'error'
+                ? 'Lengkapi semua field dan dokumen yang ditandai merah sebelum mengirimkan permohonan yudisium.'
+                : 'Pastikan Anda telah memeriksa kesesuaian berkas sebelum mengirimkan permohonan yudisium.'}
+            </p>
+          </div>
+
+          {/* TOMBOL SUBMIT */}
+          <button
+            type="button"
+            disabled={!canSubmit}
+            onClick={() => {
+              setSubmitAttempted(true)
+              if (canSubmit) {
+                alert('Pengajuan yudisium siap dikirim.')
+              }
+            }}
+            className={`flex h-12 min-w-[260px] items-center justify-center gap-2.5 rounded-xl px-7 text-sm font-semibold transition ${
+              canSubmit
+                ? 'bg-[#142f57] text-white hover:bg-[#102647]'
+                : footerState === 'error'
+                ? 'cursor-not-allowed bg-[#d0d7e2] text-[#7a8699]' 
+                : 'cursor-not-allowed bg-[#a0a8b5] text-white' 
+            }`}
+          >
+            <span>Ajukan Berkas Yudisium</span>
+
+            {footerState === 'error' ? (
+              <Ban size={17} className="shrink-0" />
+            ) : (
+              <Send size={17} className="rotate-45 shrink-0" />
+            )}
+          </button>
+        </section>
         </div>
       </main>
     </div>
