@@ -1,4 +1,5 @@
 import { useState } from 'react'
+
 import { useNavigate } from 'react-router-dom'
 
 import {
@@ -18,7 +19,8 @@ import {
   Contact,
 } from 'lucide-react'
 
-import { getUser } from '../../services/auth'
+import { getUser, saveUser } from '../../services/auth'
+
 import ugmLogo from '../../assets/ugm-logo.png'
 
 function ProfilePage() {
@@ -31,8 +33,177 @@ function ProfilePage() {
   const initialUser = getUser()
 
   const [user, setUser] = useState(initialUser)
+
   const [name, setName] = useState(initialUser?.nama || '')
+
   const [photo, setPhoto] = useState(initialUser?.avatar || null)
+
+  // =========================================================
+  // ROLE
+  // =========================================================
+
+  const getRoleName = (userData) => {
+    if (!userData) {
+      return 'mahasiswa'
+    }
+
+
+    if (userData.role?.name) {
+      return userData.role.name
+    }
+
+    if (typeof userData.role === 'string') {
+      return userData.role
+    }
+
+    if (userData.role_id) {
+      return `role_id:${userData.role_id}`
+    }
+
+    return 'mahasiswa'
+  }
+
+  const normalizeRole = (roleName) => {
+    const role = roleName?.toLowerCase()?.trim()
+
+    // ---------------------------------------------------------
+    // MAHASISWA
+    // ---------------------------------------------------------
+
+    if (role === 'mahasiswa') {
+      return 'mahasiswa'
+    }
+
+    // ---------------------------------------------------------
+    // STAF AKADEMIK
+    // ---------------------------------------------------------
+
+    if (
+      role === 'staf akademik' ||
+      role === 'staff akademik' ||
+      role === 'staf administrasi' ||
+      role === 'staff administrasi' ||
+      role === 'admin'
+    ) {
+      return 'staf_akademik'
+    }
+
+    // ---------------------------------------------------------
+    // SUPER ADMIN
+    // ---------------------------------------------------------
+
+    if (
+      role === 'super admin' ||
+      role === 'super_admin' ||
+      role === 'superadmin'
+    ) {
+      return 'super_admin'
+    }
+
+    // ---------------------------------------------------------
+    // KAPRODI
+    // ---------------------------------------------------------
+
+    if (
+      role === 'kaprodi' ||
+      role === 'kepala program studi' ||
+      role === 'kepala_prodi'
+    ) {
+      return 'kaprodi'
+    }
+
+    // ---------------------------------------------------------
+    // MANIT
+    // ---------------------------------------------------------
+
+    if (role === 'manit') {
+      return 'manit'
+    }
+
+    // ---------------------------------------------------------
+    // KADEP
+    // ---------------------------------------------------------
+
+    if (
+      role === 'kadep' ||
+      role === 'kepala departemen' ||
+      role === 'kepala_departemen'
+    ) {
+      return 'kadep'
+    }
+
+    // ---------------------------------------------------------
+    // FALLBACK
+    // ---------------------------------------------------------
+
+    return 'mahasiswa'
+  }
+
+  const rawRole = getRoleName(user)
+
+  const role = normalizeRole(rawRole)
+
+  // =========================================================
+  // ROLE CONFIGURATION
+  // =========================================================
+
+  const roleConfig = {
+    mahasiswa: {
+      label: 'Mahasiswa',
+      title: 'Profil Mahasiswa',
+      heading: 'Kelola Profile Mahasiswa',
+      description:
+        'Perbarui data personal dan foto profil akun SIYUDIS Anda.',
+      dashboard: '/dashboard',
+    },
+
+    staf_akademik: {
+      label: 'Staf Akademik',
+      title: 'Profil Staf Akademik',
+      heading: 'Kelola Profil Staf Akademik',
+      description:
+        'Perbarui data personal dan foto profil akun SIYUDIS Anda.',
+      dashboard: '/admin/dashboard',
+    },
+
+    super_admin: {
+      label: 'Super Admin',
+      title: 'Profil Super Admin',
+      heading: 'Kelola Profil Super Admin',
+      description:
+        'Perbarui data personal dan foto profil akun SIYUDIS Anda.',
+      dashboard: '/admin/dashboard',
+    },
+
+    kaprodi: {
+      label: 'Kaprodi',
+      title: 'Profil Kaprodi',
+      heading: 'Kelola Profil Kaprodi',
+      description:
+        'Perbarui data personal dan foto profil akun SIYUDIS Anda.',
+      dashboard: '/kepala-prodi/dashboard',
+    },
+
+    manit: {
+      label: 'Manit',
+      title: 'Profil Manit',
+      heading: 'Kelola Profil Manit',
+      description:
+        'Perbarui data personal dan foto profil akun SIYUDIS Anda.',
+      dashboard: '/management/dashboard',
+    },
+
+    kadep: {
+      label: 'Kadep',
+      title: 'Profil Kadep',
+      heading: 'Kelola Profil Kadep',
+      description:
+        'Perbarui data personal dan foto profil akun SIYUDIS Anda.',
+      dashboard: '/management/dashboard',
+    },
+  }
+
+  const config = roleConfig[role] || roleConfig.mahasiswa
 
   // =========================================================
   // UPLOAD FOTO
@@ -63,9 +234,17 @@ function ProfilePage() {
       return
     }
 
-    const imageUrl = URL.createObjectURL(file)
+    const reader = new FileReader()
 
-    setPhoto(imageUrl)
+    reader.onload = () => {
+      setPhoto(reader.result)
+    }
+
+    reader.onerror = () => {
+      alert('Foto gagal diproses.')
+    }
+
+    reader.readAsDataURL(file)
 
     event.target.value = ''
   }
@@ -83,7 +262,7 @@ function ProfilePage() {
   // =========================================================
 
   const handleCancel = () => {
-    navigate('/dashboard')
+    navigate(config.dashboard)
   }
 
   // =========================================================
@@ -104,10 +283,9 @@ function ProfilePage() {
       avatar: photo,
     }
 
-    sessionStorage.setItem(
-      'siyudis_user',
-      JSON.stringify(updatedUser)
-    )
+    // Gunakan saveUser agar seluruh data user tetap dipertahankan
+    // termasuk role, role_id, email, permissions, dll.
+    saveUser(updatedUser)
 
     setUser(updatedUser)
     setName(trimmedName)
@@ -126,11 +304,13 @@ function ProfilePage() {
       <aside className="w-[272px] min-h-screen shrink-0 bg-[#063E73] text-white">
 
         {/* BRAND */}
+
         <div className="px-[19px] pt-[21px]">
 
           <div className="flex items-center gap-[10px]">
 
             {/* LOGO UGM */}
+
             <img
               src={ugmLogo}
               alt="Logo UGM"
@@ -138,6 +318,7 @@ function ProfilePage() {
             />
 
             <div className="min-w-0">
+
               <div className="text-[16px] leading-[19px] font-bold">
                 SIYUDIS
               </div>
@@ -145,20 +326,24 @@ function ProfilePage() {
               <div className="mt-[2px] text-[9px] leading-[12px] text-white/80 whitespace-nowrap">
                 Departemen Teknik Elektro dan Informatika
               </div>
+
             </div>
 
           </div>
 
           <div className="mt-[23px] border-t border-white/45" />
+
         </div>
 
         {/* NAVIGATION */}
+
         <nav className="mt-[35px] px-[15px]">
 
           {/* DASHBOARD */}
+
           <button
             type="button"
-            onClick={() => navigate('/dashboard')}
+            onClick={() => navigate(config.dashboard)}
             className="
               w-full
               h-[43px]
@@ -185,6 +370,7 @@ function ProfilePage() {
           </button>
 
           {/* PENGAJUAN YUDISIUM */}
+
           <button
             type="button"
             className="
@@ -212,6 +398,7 @@ function ProfilePage() {
           </button>
 
           {/* BERITA ACARA */}
+
           <button
             type="button"
             className="
@@ -239,6 +426,7 @@ function ProfilePage() {
           </button>
 
           {/* PANDUAN */}
+
           <button
             type="button"
             className="
@@ -266,6 +454,7 @@ function ProfilePage() {
           </button>
 
         </nav>
+
       </aside>
 
       {/* =====================================================
@@ -292,29 +481,34 @@ function ProfilePage() {
         >
 
           {/* TITLE */}
+
           <div>
+
             <h1 className="text-[24px] leading-[29px] font-extrabold text-[#080808]">
-              Profile Mahasiswa
+              {config.title}
             </h1>
 
             <p className="mt-[2px] text-[12px] leading-[17px] text-[#667085]">
               Sistem Informasi Yudisium Terpadu DTEDI SV UGM
             </p>
+
           </div>
 
           {/* USER */}
+
           <div className="flex items-center gap-[11px]">
 
-          <ProfileAvatar
-            photo={photo}
-            size="small"
-          />
+            <ProfileAvatar
+              photo={photo}
+              size="small"
+            />
 
-          <span className="text-[13px] font-bold text-[#111111]">
-            {user?.nama || 'Mahasiswa'}
-          </span>
+            <span className="text-[13px] font-bold text-[#111111]">
+              {name || config.label}
+            </span>
 
           </div>
+
         </header>
 
         {/* ===================================================
@@ -341,13 +535,15 @@ function ProfilePage() {
                 shadow-[0_5px_13px_rgba(15,23,42,0.08)]
               "
             >
+
               <h2 className="text-[23px] leading-[28px] font-extrabold text-[#0A0A0A]">
-                Kelola Profile Mahasiswa
+                {config.heading}
               </h2>
 
               <p className="mt-[7px] text-[14px] leading-[20px] text-[#59606D]">
-                Perbarui data personal dan foto profil akun SIYUDIS Anda.
+                {config.description}
               </p>
+
             </section>
 
             {/* =================================================
@@ -366,6 +562,7 @@ function ProfilePage() {
             >
 
               {/* HEADER */}
+
               <div className="flex items-center gap-[11px]">
 
                 <div
@@ -387,6 +584,7 @@ function ProfilePage() {
                 </div>
 
                 <div>
+
                   <h3 className="text-[15px] leading-[19px] font-bold text-[#173152]">
                     Foto Profile
                   </h3>
@@ -394,17 +592,21 @@ function ProfilePage() {
                   <p className="mt-[1px] text-[12px] leading-[17px] text-[#7A808B]">
                     Ditampilkan pada profile akun Anda.
                   </p>
+
                 </div>
 
               </div>
 
               {/* PHOTO AREA */}
+
               <div className="mt-[20px] flex items-center gap-[22px]">
 
                 {/* FOTO */}
+
                 <div className="relative shrink-0">
 
                   {/* FRAME FOTO */}
+
                   <div
                     className="
                       h-[132px]
@@ -419,6 +621,7 @@ function ProfilePage() {
                       overflow-hidden
                     "
                   >
+
                     {photo ? (
                       <img
                         src={photo}
@@ -434,9 +637,11 @@ function ProfilePage() {
                     ) : (
                       <DefaultProfilePhoto />
                     )}
+
                   </div>
 
                   {/* CAMERA BUTTON */}
+
                   <label
                     htmlFor="photo-upload"
                     className="
@@ -464,6 +669,7 @@ function ProfilePage() {
                   </label>
 
                   {/* FILE INPUT */}
+
                   <input
                     id="photo-upload"
                     type="file"
@@ -475,12 +681,15 @@ function ProfilePage() {
                 </div>
 
                 {/* RIGHT SIDE */}
+
                 <div className="flex-1 min-w-0">
 
                   {/* BUTTONS */}
+
                   <div className="flex items-center gap-[7px]">
 
                     {/* UPLOAD */}
+
                     <label
                       htmlFor="photo-upload"
                       className="
@@ -498,6 +707,7 @@ function ProfilePage() {
                         hover:bg-[#08477F]
                       "
                     >
+
                       <CloudUpload
                         size={16}
                         strokeWidth={2}
@@ -506,9 +716,11 @@ function ProfilePage() {
                       <span>
                         Unggah Foto Baru
                       </span>
+
                     </label>
 
                     {/* DELETE */}
+
                     <button
                       type="button"
                       onClick={handleDeletePhoto}
@@ -526,6 +738,7 @@ function ProfilePage() {
                         hover:bg-[#FFC9C6]
                       "
                     >
+
                       <Trash2
                         size={15}
                         strokeWidth={2}
@@ -534,11 +747,13 @@ function ProfilePage() {
                       <span>
                         Hapus Foto
                       </span>
+
                     </button>
 
                   </div>
 
                   {/* INFO */}
+
                   <div
                     className="
                       mt-[10px]
@@ -552,6 +767,7 @@ function ProfilePage() {
                       gap-[8px]
                     "
                   >
+
                     <CircleAlert
                       size={17}
                       strokeWidth={2}
@@ -559,15 +775,21 @@ function ProfilePage() {
                     />
 
                     <p className="text-[12px] leading-[17px] text-[#394355]">
+
                       <span className="font-bold">
                         Ketentuan Foto Profile:
                       </span>{' '}
+
                       Format file PNG, JPG, atau WebP dengan ukuran maksimal 2.0 MB.
+
                     </p>
+
                   </div>
 
                 </div>
+
               </div>
+
             </section>
 
             {/* =================================================
@@ -586,6 +808,7 @@ function ProfilePage() {
             >
 
               {/* HEADER */}
+
               <div className="flex items-center gap-[11px]">
 
                 <div
@@ -599,14 +822,17 @@ function ProfilePage() {
                     justify-center
                   "
                 >
+
                   <Contact
                     size={20}
                     strokeWidth={2}
                     className="text-[#163D68]"
                   />
+
                 </div>
 
                 <div>
+
                   <h3 className="text-[15px] leading-[19px] font-bold text-[#173152]">
                     Data Akun
                   </h3>
@@ -614,15 +840,19 @@ function ProfilePage() {
                   <p className="mt-[1px] text-[12px] leading-[17px] text-[#7A808B]">
                     Identitas dari pengguna akun.
                   </p>
+
                 </div>
 
               </div>
 
               {/* FORM */}
+
               <div className="mt-[26px]">
 
                 {/* NAMA */}
+
                 <div>
+
                   <label className="text-[12px] leading-[16px] font-bold text-[#172033]">
                     Nama
                   </label>
@@ -639,6 +869,7 @@ function ProfilePage() {
                       items-center
                     "
                   >
+
                     <UserRound
                       size={17}
                       strokeWidth={2}
@@ -661,10 +892,13 @@ function ProfilePage() {
                         text-[#253044]
                       "
                     />
+
                   </div>
+
                 </div>
 
                 {/* EMAIL */}
+
                 <div className="mt-[9px]">
 
                   <div className="flex items-center justify-between">
@@ -680,6 +914,7 @@ function ProfilePage() {
                         text-[#172033]
                       "
                     >
+
                       <span>
                         Email Institusi SSO UGM
                       </span>
@@ -689,6 +924,7 @@ function ProfilePage() {
                         strokeWidth={2}
                         className="text-[#6D7480]"
                       />
+
                     </label>
 
                     <span className="text-[10px] leading-[14px] font-bold text-[#7A7F89]">
@@ -698,6 +934,7 @@ function ProfilePage() {
                   </div>
 
                   {/* EMAIL INPUT */}
+
                   <div
                     className="
                       mt-[7px]
@@ -710,6 +947,7 @@ function ProfilePage() {
                       items-center
                     "
                   >
+
                     <Mail
                       size={17}
                       strokeWidth={2}
@@ -718,7 +956,7 @@ function ProfilePage() {
 
                     <input
                       type="email"
-                      value={user?.email}
+                      value={user?.email || ''}
                       disabled
                       className="
                         flex-1
@@ -730,6 +968,7 @@ function ProfilePage() {
                         text-[#4B5563]
                       "
                     />
+
                   </div>
 
                   <p className="mt-[7px] text-[12px] leading-[17px] text-[#858B96]">
@@ -739,9 +978,11 @@ function ProfilePage() {
                 </div>
 
                 {/* BUTTONS */}
+
                 <div className="mt-[22px] flex justify-end gap-[10px]">
 
                   {/* BATAL */}
+
                   <button
                     type="button"
                     onClick={handleCancel}
@@ -759,6 +1000,7 @@ function ProfilePage() {
                       hover:bg-[#E5E9F8]
                     "
                   >
+
                     <X
                       size={15}
                       strokeWidth={2}
@@ -767,9 +1009,11 @@ function ProfilePage() {
                     <span>
                       Batal
                     </span>
+
                   </button>
 
                   {/* SIMPAN */}
+
                   <button
                     type="button"
                     onClick={handleSave}
@@ -787,6 +1031,7 @@ function ProfilePage() {
                       hover:bg-[#08477F]
                     "
                   >
+
                     <Save
                       size={15}
                       strokeWidth={2}
@@ -795,23 +1040,28 @@ function ProfilePage() {
                     <span>
                       Simpan Perubahan
                     </span>
+
                   </button>
 
                 </div>
 
               </div>
+
             </section>
 
           </div>
+
         </main>
+
       </div>
+
     </div>
   )
 }
 
-/* =============================================================
-   DEFAULT PROFILE PHOTO
-============================================================= */
+// =============================================================
+// DEFAULT PROFILE PHOTO
+// =============================================================
 
 function DefaultProfilePhoto() {
   return (
@@ -825,7 +1075,9 @@ function DefaultProfilePhoto() {
         overflow-hidden
       "
     >
+
       {/* HEAD */}
+
       <div
         className="
           absolute
@@ -840,6 +1092,7 @@ function DefaultProfilePhoto() {
       />
 
       {/* BODY */}
+
       <div
         className="
           absolute
@@ -852,13 +1105,14 @@ function DefaultProfilePhoto() {
           bg-white
         "
       />
+
     </div>
   )
 }
 
-/* =============================================================
-   HEADER PROFILE AVATAR
-============================================================= */
+// =============================================================
+// HEADER PROFILE AVATAR
+// =============================================================
 
 function ProfileAvatar({ photo, size }) {
   const [imageError, setImageError] = useState(false)
@@ -882,6 +1136,7 @@ function ProfileAvatar({ photo, size }) {
         justify-center
       "
     >
+
       {showPhoto ? (
         <img
           src={photo}
@@ -891,7 +1146,9 @@ function ProfileAvatar({ photo, size }) {
         />
       ) : (
         <div className="relative h-full w-full">
+
           {/* HEAD */}
+
           <div
             className="
               absolute
@@ -906,6 +1163,7 @@ function ProfileAvatar({ photo, size }) {
           />
 
           {/* BODY */}
+
           <div
             className="
               absolute
@@ -918,8 +1176,10 @@ function ProfileAvatar({ photo, size }) {
               bg-white
             "
           />
+
         </div>
       )}
+
     </div>
   )
 }
