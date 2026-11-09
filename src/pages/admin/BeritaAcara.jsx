@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ChevronDown,
@@ -6,515 +6,594 @@ import {
   LogOut,
   Search,
   Send,
-  Mail,
-  MoreHorizontal,
-  FileText,
   Save,
   X,
   CheckCircle2,
   AlertCircle,
-  Pencil,
-  RotateCcw,
   ArrowRight,
   ChevronLeft,
   ChevronRight,
-  FileSearchIcon
+  Eye,
+  Check,
+  History,
+  Inbox,
+  AlertTriangle,
+  Loader2,
+  Download,
+  ListChecks,
 } from 'lucide-react'
-
 import Sidebar from '../../components/Sidebar'
-import { getUser, clearUser } from '../../services/auth'
+import { getUser, logout } from '../../services/auth'
+import { errorMessage } from '../../services/api'
+import {
+  listPengajuanStaf,
+  listProgramStudi,
+  listEvents,
+  kirimKonfirmasi,
+  checklistAkhir,
+  ajukanBeritaAcara,
+  updateBeritaAcaraMeta,
+  previewBeritaAcara,
+  exportBeritaAcara,
+} from '../../services/adminApi'
+import { normalizePengajuan, normalizeProdi, statusMeta, formatDate } from '../../services/normalize'
+
+const PAGE_SIZE = 10
 
 /* =========================================================
-   DATA PROGRAM STUDI
+   TURUNAN STATUS (dari status pengajuan di backend)
 ========================================================= */
+// Atribut (9 data penilaian) dianggap lengkap bila data sudah dikirim ke mahasiswa untuk dikonfirmasi
+const ATRIBUT_LENGKAP = ['waiting_student_confirmation', 'confirmed_by_student', 'final_checked_akademik']
 
-const PROGRAM_STUDI = [
-  {
-    kode: 'TRPL',
-    nama: 'Teknologi Rekayasa Perangkat Lunak (TRPL)',
-  },
-  {
-    kode: 'TRI',
-    nama: 'Teknologi Rekayasa Internet (TRI)',
-  },
-  {
-    kode: 'TRE',
-    nama: 'Teknologi Rekayasa Elektro (TRE)',
-  },
-  {
-    kode: 'TRIK',
-    nama: 'Teknologi Rekayasa Instrumen & Kontrol (TRIK)',
-  },
-]
+const statusAtribut = (p) => (ATRIBUT_LENGKAP.includes(p.status) || p.beritaAcaraId ? 'LENGKAP' : 'BELUM LENGKAP')
+
+function statusKonfirmasi(p) {
+  if (p.beritaAcaraId || ['confirmed_by_student', 'final_checked_akademik'].includes(p.status)) return 'TERKONFIRMASI'
+  if (p.status === 'waiting_student_confirmation') return 'MENUNGGU KONFIRMASI'
+  if (p.status === 'student_revision_requested') return 'PERLU REVISI'
+  return '-'
+}
 
 /* =========================================================
-   DATA MAHASISWA
+   AVATAR PROFIL & DROPDOWN
 ========================================================= */
+function ProfileAvatar({ photo, size = 'normal' }) {
+  const large = size === 'large'
+  return photo ? (
+    <img
+      src={photo}
+      alt="Foto profil"
+      className={`rounded-full border-2 border-[#EEF2F6] object-cover ${
+        large ? 'h-16 w-16' : 'h-8 w-8'
+      }`}
+    />
+  ) : (
+    <div
+      className={`flex items-center justify-center rounded-full bg-[#CBD5E1] text-[#475569] ${
+        large ? 'h-16 w-16' : 'h-8 w-8'
+      }`}
+    >
+      <UserRound size={large ? 32 : 18} />
+    </div>
+  )
+}
 
-const INITIAL_STUDENTS = [
-  {
-    id: 1,
-    nama: 'Nadila Azka Rakhma',
-    nim: '22/505286/SV/21978',
-    prodi: 'TRPL',
-    predikat: 'Cumlaude',
-    emailStatus: 'TERKIRIM',
-    confirmationStatus: 'SUDAH BENAR',
-    baStatus: 'confirmed',
-    selected: true,
-
-    dataBA: {
-      ipk: '3,70',
-      nilaiD: '10',
-      sks: '144',
-      similarity: '14',
-      english: 'TEVocS: 70',
-      judulPA: 'Disetujui',
-      sertifikatKegiatan: 'Kepanitiaan Universitas PORSENIGAMA 2023',
-      sertifikatKompetensi: 'BNSP Associate Data Scientist 2025',
-      statusPemeriksaan: '-',
-    },
-  },
-
-  {
-    id: 2,
-    nama: 'Gilang Ramadhan Putra',
-    nim: '22/505700/SV/22013',
-    prodi: 'TRPL',
-    predikat: 'Cumlaude',
-    emailStatus: 'TERKIRIM',
-    confirmationStatus: 'PERLU REVISI',
-    baStatus: 'revision',
-    selected: true,
-
-    dataBA: {
-      ipk: '3,70',
-      nilaiD: '10',
-      sks: '144',
-      similarity: '14',
-      english: 'TEVocS: 70',
-      judulPA: 'Disetujui',
-      sertifikatKegiatan: 'Kepanitiaan Universitas PORSENIGAMA 2023',
-      sertifikatKompetensi: 'BNSP Associate Data Scientist 2025',
-      statusPemeriksaan: '-',
-    },
-
-    catatanRevisi: [
-      'IPK seharusnya 3,82',
-      'Sertifikat Kegiatan seharusnya Kegiatan Fakultas PERMADANI 2023',
-    ],
-  },
-
-  {
-    id: 3,
-    nama: 'Rizky Adi Nugroho',
-    nim: '22/505810/SV/22028',
-    prodi: 'TRPL',
-    predikat: 'Tidak Cumlaude',
-    emailStatus: 'GAGAL',
-    confirmationStatus: 'PERLU REVISI',
-    baStatus: 'revision',
-    selected: false,
-
-    dataBA: {
-      ipk: '3,70',
-      nilaiD: '10',
-      sks: '144',
-      similarity: '14',
-      english: 'TEVocS: 70',
-      judulPA: 'Disetujui',
-      sertifikatKegiatan: 'Kepanitiaan Universitas PORSENIGAMA 2023',
-      sertifikatKompetensi: 'BNSP Associate Data Scientist 2025',
-      statusPemeriksaan: '-',
-    },
-
-    catatanRevisi: [
-      'IPK seharusnya 3,82',
-      'Sertifikat Kegiatan perlu diperiksa kembali',
-    ],
-  },
-
-  {
-    id: 4,
-    nama: 'Dimas Bagus Saputra',
-    nim: '22/506018/SV/22054',
-    prodi: 'TRPL',
-    predikat: 'Tidak Cumlaude',
-    emailStatus: '-',
-    confirmationStatus: '-',
-    baStatus: 'empty',
-    selected: false,
-
-    dataBA: {
-      ipk: '',
-      nilaiD: '',
-      sks: '',
-      similarity: '',
-      english: '',
-      judulPA: '',
-      sertifikatKegiatan: '',
-      sertifikatKompetensi: '',
-      statusPemeriksaan: '',
-    },
-  },
-]
+function ProfileDropdown({ user, displayName, navigate, handleLogout, setProfileOpen }) {
+  return (
+    <div className="absolute right-0 top-[52px] z-50 w-[260px] overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white shadow-xl">
+      <div className="flex flex-col items-center px-5 pb-4 pt-5">
+        <ProfileAvatar photo={user?.avatar} size="large" />
+        <p className="mt-3 max-w-[220px] truncate text-center text-[14px] font-bold text-[#0F172A]">
+          {displayName}
+        </p>
+      </div>
+      <div className="h-px bg-[#F1F5F9]" />
+      <button
+        type="button"
+        onClick={() => {
+          setProfileOpen(false)
+          navigate('/profile')
+        }}
+        className="flex w-full items-center gap-3 px-5 py-3 text-left transition hover:bg-[#F8FAFC]"
+      >
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#EEF5FF]">
+          <UserRound size={16} className="text-[#0A477F]" />
+        </div>
+        <div>
+          <p className="text-[12px] font-bold text-[#1E293B]">Profil Saya</p>
+          <p className="text-[10px] text-[#64748B]">Ubah nama dan foto profil</p>
+        </div>
+      </button>
+      <div className="mx-5 h-px bg-[#F1F5F9]" />
+      <button
+        type="button"
+        onClick={handleLogout}
+        className="flex w-full items-center gap-3 px-5 py-3 text-left transition hover:bg-red-50"
+      >
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#FFE5E5]">
+          <LogOut size={16} className="text-[#DC2626]" />
+        </div>
+        <div>
+          <p className="text-[12px] font-bold text-red-600">Keluar / Logout</p>
+          <p className="text-[10px] text-red-400">Akhiri sesi akun di perangkat ini</p>
+        </div>
+      </button>
+    </div>
+  )
+}
 
 /* =========================================================
-   MAIN PAGE
+   BADGE STATUS
 ========================================================= */
+function StatusBadgeAtribut({ status }) {
+  if (status === 'LENGKAP') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-[#E6F4EA] px-2.5 py-0.5 text-[9.5px] font-bold text-[#137333]">
+        <span className="h-1.5 w-1.5 rounded-full bg-[#137333]" /> LENGKAP
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-[#FEF3C7] px-2.5 py-0.5 text-[9.5px] font-bold text-[#D97706]">
+      <span className="h-1.5 w-1.5 rounded-full bg-[#D97706]" /> BELUM LENGKAP
+    </span>
+  )
+}
 
-function BeritaAcara() {
+function StatusBadgeKonfirmasi({ status }) {
+  if (status === 'TERKONFIRMASI') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-[#E6F4EA] px-2.5 py-0.5 text-[9.5px] font-bold text-[#137333]">
+        <span className="h-1.5 w-1.5 rounded-full bg-[#137333]" /> TERKONFIRMASI
+      </span>
+    )
+  }
+  if (status === 'MENUNGGU KONFIRMASI') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-[#FEF3C7] px-2.5 py-0.5 text-[9.5px] font-bold text-[#D97706]">
+        <span className="h-1.5 w-1.5 rounded-full bg-[#D97706]" /> MENUNGGU KONFIRMASI
+      </span>
+    )
+  }
+  if (status === 'PERLU REVISI') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-[#FEF2F2] px-2.5 py-0.5 text-[9.5px] font-bold text-[#DC2626]">
+        <span className="h-1.5 w-1.5 rounded-full bg-[#DC2626]" /> PERLU REVISI
+      </span>
+    )
+  }
+  return <span className="text-[10.5px] text-[#94A3B8]">-</span>
+}
+
+/* =========================================================
+   MODAL KONFIRMASI AKSI MASSAL
+========================================================= */
+function ConfirmActionModal({ icon: Icon, tone = 'blue', title, description, rows, confirmLabel, busy, onClose, onConfirm }) {
+  const tones = {
+    blue: 'bg-[#E0ECFB] text-[#0A477F]',
+    amber: 'bg-[#FEF3C7] text-[#D97706]',
+    green: 'bg-[#E6F4EA] text-[#137333]',
+  }
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+      <div className="relative w-full max-w-[460px] rounded-2xl bg-white p-6 shadow-2xl">
+        <button onClick={onClose} className="absolute right-4 top-4 text-[#94A3B8] hover:text-[#0F172A]">
+          <X size={18} />
+        </button>
+        <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-2xl ${tones[tone]}`}>
+          <Icon size={22} />
+        </div>
+        <h3 className="mt-4 text-center text-[15px] font-bold text-[#0F172A]">{title}</h3>
+        <p className="mt-1.5 text-center text-[11px] leading-relaxed text-[#64748B]">{description}</p>
+        <div className="mt-4 max-h-[160px] space-y-1 overflow-y-auto rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3 text-[11px]">
+          {rows.map((r, idx) => (
+            <div key={r.id} className="flex justify-between gap-3 text-[#334155]">
+              <span>
+                {idx + 1}. {r.nama}
+              </span>
+              <span className="text-[#64748B]">{r.nim}</span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 flex gap-2">
+          <button
+            onClick={onClose}
+            className="h-[36px] flex-1 rounded-xl border border-[#CBD5E1] bg-white text-[10.5px] font-bold text-[#475569] hover:bg-[#F1F5F9]"
+          >
+            Batal
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={busy}
+            className="flex h-[36px] flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#0A477F] text-[10.5px] font-bold text-white hover:bg-[#083866] disabled:opacity-60"
+          >
+            {busy && <Loader2 size={12} className="animate-spin" />} {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* =========================================================
+   MODAL HASIL AKSI MASSAL
+========================================================= */
+function ResultModal({ title, results, footnote, onClose }) {
+  const okCount = results.filter((r) => r.ok).length
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+      <div className="relative w-full max-w-[480px] rounded-2xl bg-white p-6 shadow-2xl">
+        <button onClick={onClose} className="absolute right-4 top-4 text-[#94A3B8] hover:text-[#0F172A]">
+          <X size={18} />
+        </button>
+        <h3 className="text-[15px] font-bold text-[#0F172A]">{title}</h3>
+        <p className="mt-1 text-[11px] text-[#64748B]">
+          {okCount} dari {results.length} berhasil diproses.
+        </p>
+        <div className="mt-4 max-h-[260px] space-y-1.5 overflow-y-auto rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3 text-[10.5px]">
+          {results.map((r, idx) => (
+            <div key={r.id} className="flex items-start justify-between gap-3 text-[#334155]">
+              <span>
+                {idx + 1}. {r.nama}
+              </span>
+              {r.ok ? (
+                <span className="flex shrink-0 items-center gap-1 text-[9.5px] font-semibold text-[#137333]">
+                  <Check size={11} /> Berhasil
+                </span>
+              ) : (
+                <span className="max-w-[220px] text-right text-[9.5px] font-semibold text-[#DC2626]">{r.message}</span>
+              )}
+            </div>
+          ))}
+        </div>
+        {footnote && (
+          <div className="mt-3 flex items-start gap-2 rounded-xl border border-[#0A477F]/20 bg-[#F0F7FF] p-3 text-[10px] leading-4 text-[#0A477F]">
+            <AlertCircle size={14} className="mt-0.5 shrink-0" />
+            <span>{footnote}</span>
+          </div>
+        )}
+        <button
+          onClick={onClose}
+          className="mt-5 h-[36px] w-full rounded-xl bg-[#0A477F] text-[10.5px] font-bold text-white hover:bg-[#083866]"
+        >
+          Selesai
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/* =========================================================
+   MODAL PRATINJAU BERITA ACARA (HTML dari backend)
+========================================================= */
+function PreviewModal({ html, loading, error, onClose, onDownload, downloading }) {
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+      <div className="relative flex max-h-[92vh] w-full max-w-[900px] flex-col rounded-2xl bg-white p-5 shadow-2xl">
+        <div className="flex items-center justify-between pb-3">
+          <h3 className="text-[14px] font-bold text-[#0F172A]">Pratinjau Berita Acara</h3>
+          <div className="flex items-center gap-2">
+            {onDownload && (
+              <button
+                onClick={onDownload}
+                disabled={downloading}
+                className="flex h-[30px] items-center gap-1.5 rounded-xl bg-[#0A477F] px-3 text-[10px] font-bold text-white hover:bg-[#083866] disabled:opacity-60"
+              >
+                {downloading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Unduh PDF
+              </button>
+            )}
+            <button onClick={onClose} className="text-[#94A3B8] hover:text-[#0F172A]">
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+        {loading && (
+          <div className="flex items-center justify-center gap-2 py-16 text-[11px] text-[#64748B]">
+            <Loader2 size={15} className="animate-spin" /> Memuat pratinjau...
+          </div>
+        )}
+        {error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-[11px] text-rose-700">{error}</div>}
+        {html && <iframe title="Pratinjau Berita Acara" sandbox="" srcDoc={html} className="h-[70vh] w-full rounded-xl border border-[#E2E8F0] bg-white" />}
+      </div>
+    </div>
+  )
+}
+
+/* =========================================================
+   KOMPONEN UTAMA BERITA ACARA
+========================================================= */
+export default function BeritaAcara() {
   const navigate = useNavigate()
 
+  // User Profile
   const [user] = useState(() => getUser())
   const [profileOpen, setProfileOpen] = useState(false)
+  const displayName = user?.nama || 'Staf Akademik'
 
-  const [nomorDokumen, setNomorDokumen] = useState(
-    '104/UN1/SV/DTEDI/BA-YUD/VI/2024'
-  )
+  // Data dari API
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [pengajuan, setPengajuan] = useState([])
+  const [prodis, setProdis] = useState([])
+  const [events, setEvents] = useState([])
+  const [notice, setNotice] = useState(null)
 
-  const [tanggalDokumen, setTanggalDokumen] = useState('28 Jun 2024')
+  // Konfigurasi dokumen (dikirim ke backend saat Berita Acara diajukan)
+  const [nomorSurat, setNomorSurat] = useState('')
+  const [tanggalSurat, setTanggalSurat] = useState('')
+  const [periodeDraft, setPeriodeDraft] = useState(null)
+  const [pickedEventId, setPickedEventId] = useState('')
+  const [isConfigSaved, setIsConfigSaved] = useState(false)
 
-  const [periodeYudisium, setPeriodeYudisium] = useState(
-    'Periode Juni 2024 (Genap 2023/2024)'
-  )
+  // Tabs & pilihan
+  const [activeTab, setActiveTab] = useState('active')
+  const [pickedProdiId, setPickedProdiId] = useState('')
+  const [selectedBaKey, setSelectedBaKey] = useState(null)
 
-  const [isSaved, setIsSaved] = useState(true)
-
-  const [selectedProdi, setSelectedProdi] = useState('TRPL')
-
+  // Filters & pagination
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('Semua Status')
-  const [emailFilter, setEmailFilter] = useState('Semua Status')
+  const [filterAtribut, setFilterAtribut] = useState('')
+  const [filterKonfirmasi, setFilterKonfirmasi] = useState('')
+  const [page, setPage] = useState(1)
 
-  const [students, setStudents] = useState(INITIAL_STUDENTS)
+  // Aksi
+  const [confirm, setConfirm] = useState(null) // 'send' | 'checklist' | 'ajukan'
+  const [busy, setBusy] = useState(false)
+  const [results, setResults] = useState(null)
+  const [preview, setPreview] = useState(null) // { baId, html, loading, error }
+  const [downloading, setDownloading] = useState(false)
 
-  const [selectedStudent, setSelectedStudent] = useState(null)
+  const loadAll = useCallback(
+    () =>
+      Promise.all([listPengajuanStaf(), listProgramStudi().catch(() => []), listEvents().catch(() => [])])
+        .then(([pengajuanRes, prodiRes, eventRes]) => {
+          setPengajuan(pengajuanRes.map(normalizePengajuan))
+          setProdis(prodiRes.map(normalizeProdi))
+          setEvents(eventRes)
+          setLoadError('')
+        })
+        .catch((err) => setLoadError(errorMessage(err, 'Gagal memuat data berita acara')))
+        .finally(() => setLoading(false)),
+    []
+  )
 
-  const [modalMode, setModalMode] = useState(null)
+  useEffect(() => {
+    loadAll()
+  }, [loadAll])
 
-  const [actionMenuId, setActionMenuId] = useState(null)
-
-  const displayName = user?.nama || 'Aji Pangestu'
-
-  /* =======================================================
-     LOGOUT
-  ======================================================= */
-
-  const handleLogout = () => {
-    clearUser()
+  const handleLogout = async () => {
+    await logout()
     setProfileOpen(false)
     navigate('/')
   }
 
-  /* =======================================================
-     SAVE CONFIGURATION
-  ======================================================= */
-
-  const handleSaveConfiguration = () => {
-    setIsSaved(true)
+  const flash = (type, text) => {
+    setNotice({ type, text })
+    setTimeout(() => setNotice(null), 7000)
   }
 
-  /* =======================================================
-     PROGRAM STUDI
-  ======================================================= */
+  /* ---------- turunan ---------- */
+  const selectedProdiId = pickedProdiId || (prodis[0] ? String(prodis[0].id) : '')
+  const selectedProdi = prodis.find((p) => String(p.id) === selectedProdiId) || null
 
-  const handleSelectProdi = (kode) => {
-    setSelectedProdi(kode)
-    setSearch('')
-    setStatusFilter('Semua Status')
-    setEmailFilter('Semua Status')
-    setActionMenuId(null)
-  }
+  const effectiveEvent =
+    events.find((e) => String(e.id) === String(pickedEventId)) || events.find((e) => e.is_active) || events[0] || null
+  const periodeText = periodeDraft ?? effectiveEvent?.periode ?? ''
 
-  /* =======================================================
-     FILTER
-  ======================================================= */
-
-  const filteredStudents = useMemo(() => {
-    return students.filter((student) => {
-      if (student.prodi !== selectedProdi) {
-        return false
-      }
-
-      const keyword = search.toLowerCase().trim()
-
-      const searchMatch =
-        !keyword ||
-        student.nama.toLowerCase().includes(keyword) ||
-        student.nim.toLowerCase().includes(keyword)
-
-      const statusMatch =
-        statusFilter === 'Semua Status' ||
-        student.confirmationStatus === statusFilter
-
-      const emailMatch =
-        emailFilter === 'Semua Status' ||
-        student.emailStatus === emailFilter
-
-      return searchMatch && statusMatch && emailMatch
-    })
-  }, [
-    students,
-    selectedProdi,
-    search,
-    statusFilter,
-    emailFilter,
-  ])
-
-  /* =======================================================
-     SELECT STUDENT
-  ======================================================= */
-
-  const handleToggleStudent = (id) => {
-    setStudents((current) =>
-      current.map((student) =>
-        student.id === id
-          ? {
-              ...student,
-              selected: !student.selected,
-            }
-          : student
-      )
-    )
-  }
-
-  const handleToggleAll = () => {
-    const visibleIds = filteredStudents.map((student) => student.id)
-
-    const allSelected =
-      visibleIds.length > 0 &&
-      visibleIds.every((id) =>
-        students.find((student) => student.id === id)?.selected
-      )
-
-    setStudents((current) =>
-      current.map((student) =>
-        visibleIds.includes(student.id)
-          ? {
-              ...student,
-              selected: !allSelected,
-            }
-          : student
-      )
-    )
-  }
-
-  /* =======================================================
-     MODAL
-  ======================================================= */
-
-  const openModal = (student, mode) => {
-    setSelectedStudent(student)
-    setModalMode(mode)
-    setActionMenuId(null)
-  }
-
-  const closeModal = () => {
-    setSelectedStudent(null)
-    setModalMode(null)
-  }
-
-  /* =======================================================
-     EDIT DATA BERITA ACARA
-  ======================================================= */
-
-  const handleChangeBA = (field, value) => {
-    if (!selectedStudent) return
-
-    setSelectedStudent((current) => ({
-      ...current,
-      dataBA: {
-        ...current.dataBA,
-        [field]: value,
-      },
-    }))
-  }
-
-  const handleSaveBA = () => {
-    if (!selectedStudent) return
-
-    setStudents((current) =>
-      current.map((student) =>
-        student.id === selectedStudent.id
-          ? {
-              ...student,
-              dataBA: selectedStudent.dataBA,
-              baStatus:
-                student.baStatus === 'empty'
-                  ? 'filled'
-                  : student.baStatus,
-              emailStatus:
-                student.emailStatus === '-'
-                  ? 'TERKIRIM'
-                  : student.emailStatus,
-            }
-          : student
-      )
-    )
-
-    closeModal()
-  }
-
-  /* =======================================================
-     VERIFIKASI / SERAHKAN KE KAPRODI
-  ======================================================= */
-
-  const handleSubmitToKaprodi = () => {
-    const selectedIds = students
-      .filter(
-        (student) =>
-          student.selected &&
-          student.confirmationStatus === 'SUDAH BENAR'
-      )
-      .map((student) => student.id)
-
-    if (selectedIds.length === 0) return
-
-    setStudents((current) =>
-      current.map((student) =>
-        selectedIds.includes(student.id)
-          ? {
-              ...student,
-              confirmationStatus: 'SUDAH BENAR',
-              baStatus: 'submitted',
-            }
-          : student
-      )
-    )
-
-    setActionMenuId(null)
-  }
-
-  /* =======================================================
-     SEND EMAIL
-  ======================================================= */
-
-  const handleSendEmail = () => {
-    const selectedIds = students
-      .filter(
-        (student) =>
-          student.selected &&
-          student.emailStatus !== 'TERKIRIM'
-      )
-      .map((student) => student.id)
-
-    if (selectedIds.length === 0) return
-
-    setStudents((current) =>
-      current.map((student) =>
-        selectedIds.includes(student.id)
-          ? {
-              ...student,
-              emailStatus: 'TERKIRIM',
-            }
-          : student
-      )
-    )
-
-    setActionMenuId(null)
-  }
-
-  /* =======================================================
-     ACTION MENU
-  ======================================================= */
-
-  const handleFixData = (student) => {
-    openModal(student, 'edit')
-  }
-
-  const handleResendEmail = (student) => {
-    setStudents((current) =>
-      current.map((item) =>
-        item.id === student.id
-          ? {
-              ...item,
-              emailStatus: 'TERKIRIM',
-            }
-          : item
-      )
-    )
-
-    setActionMenuId(null)
-  }
-
-  /* =======================================================
-     COUNTS
-  ======================================================= */
-
-  const selectedForKaprodi = students.filter(
-    (student) =>
-      student.prodi === selectedProdi &&
-      student.selected &&
-      student.confirmationStatus === 'SUDAH BENAR'
-  ).length
-
-  const selectedForEmail = students.filter(
-    (student) =>
-      student.prodi === selectedProdi &&
-      student.selected &&
-      student.emailStatus !== 'TERKIRIM'
-  ).length
-
-  const selectedVisibleIds = filteredStudents.map(
-    (student) => student.id
+  // Mahasiswa prodi yang belum masuk Berita Acara
+  const prodiStudents = useMemo(
+    () => pengajuan.filter((p) => String(p.prodiId) === selectedProdiId && !p.beritaAcaraId),
+    [pengajuan, selectedProdiId]
   )
 
-  const allVisibleSelected =
-    selectedVisibleIds.length > 0 &&
-    selectedVisibleIds.every(
-      (id) =>
-        students.find((student) => student.id === id)?.selected
-    )
+  const targets = useMemo(
+    () => ({
+      send: prodiStudents.filter((p) => p.status === 'checking_akademik'),
+      checklist: prodiStudents.filter((p) => p.status === 'confirmed_by_student'),
+      ajukan: prodiStudents.filter((p) => p.status === 'final_checked_akademik'),
+    }),
+    [prodiStudents]
+  )
+
+  const needRevision = prodiStudents.filter((p) => p.status === 'student_revision_requested')
+
+  // Histori: kelompokkan per Berita Acara
+  const baGroups = useMemo(() => {
+    const map = new Map()
+    pengajuan
+      .filter((p) => p.beritaAcaraId)
+      .forEach((p) => {
+        const key = String(p.beritaAcaraId)
+        if (!map.has(key)) {
+          const ev = events.find((e) => String(e.id) === String(p.eventId))
+          map.set(key, {
+            key,
+            id: p.beritaAcaraId,
+            prodiNama: p.prodiNama,
+            eventNama: ev ? `${ev.nama_event}${ev.periode ? ` — ${ev.periode}` : ''}` : p.eventName || '-',
+            tanggalYudisium: ev?.tgl_yudisium ? formatDate(ev.tgl_yudisium) : '-',
+            status: p.beritaAcaraStatus || '-',
+            students: [],
+          })
+        }
+        map.get(key).students.push(p)
+      })
+    return [...map.values()]
+  }, [pengajuan, events])
+
+  const selectedBa = baGroups.find((g) => g.key === selectedBaKey) || null
+
+  const filteredStudents = useMemo(() => {
+    const list = activeTab === 'history' ? selectedBa?.students || [] : prodiStudents
+    const keyword = search.toLowerCase().trim()
+    return list.filter((st) => {
+      const matchSearch = !keyword || st.nama.toLowerCase().includes(keyword) || String(st.nim).toLowerCase().includes(keyword)
+      const matchAtribut = !filterAtribut || statusAtribut(st) === filterAtribut
+      const matchKonfirmasi = !filterKonfirmasi || statusKonfirmasi(st) === filterKonfirmasi
+      return matchSearch && matchAtribut && matchKonfirmasi
+    })
+  }, [activeTab, selectedBa, prodiStudents, search, filterAtribut, filterKonfirmasi])
+
+  const showingGroups = activeTab === 'history' && !selectedBa
+  const totalRows = showingGroups ? baGroups.length : filteredStudents.length
+  const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages)
+  const slice = (list) => list.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
+
+  const countLengkap = prodiStudents.filter((st) => statusAtribut(st) === 'LENGKAP').length
+
+  /* ---------- aksi massal ---------- */
+  const runBulk = async (list, action) => {
+    const out = []
+    for (const st of list) {
+      try {
+        await action(st.id)
+        out.push({ id: st.id, nama: st.nama, ok: true })
+      } catch (err) {
+        out.push({ id: st.id, nama: st.nama, ok: false, message: errorMessage(err, 'Gagal diproses') })
+      }
+    }
+    return out
+  }
+
+  const handleBulkSend = async () => {
+    setBusy(true)
+    const out = await runBulk(targets.send, kirimKonfirmasi)
+    setBusy(false)
+    setConfirm(null)
+    setResults({
+      title: 'Hasil Pengiriman Email Konfirmasi',
+      results: out,
+      footnote:
+        'Status mahasiswa yang berhasil berubah menjadi Menunggu Konfirmasi hingga mahasiswa menyetujui atau meminta revisi data.',
+    })
+    loadAll()
+  }
+
+  const handleBulkChecklist = async () => {
+    setBusy(true)
+    const out = await runBulk(targets.checklist, checklistAkhir)
+    setBusy(false)
+    setConfirm(null)
+    setResults({
+      title: 'Hasil Checklist Akhir',
+      results: out,
+      footnote: 'Mahasiswa yang lolos checklist akhir siap diajukan ke Kaprodi melalui Berita Acara.',
+    })
+    loadAll()
+  }
+
+  const handleAjukan = async () => {
+    if (!effectiveEvent) {
+      setConfirm(null)
+      return flash('error', 'Belum ada periode yudisium. Buat periode terlebih dahulu di halaman Pengajuan Yudisium.')
+    }
+    setBusy(true)
+    try {
+      const created = await ajukanBeritaAcara({
+        yudisium_event_id: Number(effectiveEvent.id),
+        program_studi_id: Number(selectedProdiId),
+        pengajuan_ids: targets.ajukan.map((p) => Number(p.id)),
+      })
+      const baId = created?.id ?? created?.berita_acara_id ?? created?.berita_acara?.id
+
+      const meta = {}
+      if (nomorSurat.trim()) meta.nomor_surat = nomorSurat.trim()
+      if (tanggalSurat) meta.tanggal_surat = tanggalSurat
+      if (periodeText.trim()) meta.periode = periodeText.trim()
+
+      let metaFailed = ''
+      if (baId && Object.keys(meta).length > 0) {
+        try {
+          await updateBeritaAcaraMeta(baId, meta)
+        } catch (err) {
+          metaFailed = errorMessage(err, 'Gagal menyimpan nomor/tanggal surat')
+        }
+      }
+
+      setConfirm(null)
+      await loadAll()
+      flash(
+        metaFailed ? 'error' : 'success',
+        metaFailed
+          ? `Berita Acara berhasil diajukan, tetapi metadata gagal disimpan: ${metaFailed}`
+          : `Berita Acara ${selectedProdi?.kode || ''} berhasil diajukan ke Kaprodi.`
+      )
+    } catch (err) {
+      setConfirm(null)
+      flash('error', errorMessage(err, 'Gagal mengajukan Berita Acara'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /* ---------- preview & export ---------- */
+  const openPreview = async (baId) => {
+    setPreview({ baId, html: '', loading: true, error: '' })
+    try {
+      const data = await previewBeritaAcara(baId)
+      setPreview({ baId, html: data?.html || '', loading: false, error: data?.html ? '' : 'Pratinjau kosong.' })
+    } catch (err) {
+      setPreview({ baId, html: '', loading: false, error: errorMessage(err, 'Gagal memuat pratinjau') })
+    }
+  }
+
+  const handleDownload = async (baId) => {
+    setDownloading(true)
+    try {
+      const blob = await exportBeritaAcara(baId)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `berita-acara-${baId}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      flash('error', errorMessage(err, 'Gagal mengunduh PDF (PDF baru tersedia setelah Manit dan Kadep menyetujui)'))
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  const switchTab = (tab) => {
+    setActiveTab(tab)
+    setSelectedBaKey(null)
+    setSearch('')
+    setFilterAtribut('')
+    setFilterKonfirmasi('')
+    setPage(1)
+  }
+
+  const fieldCls =
+    'h-[36px] w-full rounded-xl border border-[#CBD5E1] bg-white px-3 text-[10.5px] text-[#1E293B] outline-none focus:border-[#0A477F]'
+  const thCls = 'px-5 py-2.5 text-left text-[8.5px] font-bold uppercase text-[#64748B]'
+  const outlineBtn =
+    'flex h-[36px] items-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-4 text-[10.5px] font-bold text-[#475569] hover:bg-[#F1F5F9] disabled:cursor-not-allowed disabled:opacity-50'
 
   return (
-    <div
-      className="min-h-screen bg-[#EEF3F8] text-[#111827]"
-      onClick={() => {
-        if (actionMenuId !== null) {
-          setActionMenuId(null)
-        }
-      }}
-    >
+    <div className="min-h-screen bg-[#F1F5F9] font-sans text-[#1E293B]">
       <Sidebar admin />
 
-      <div className="ml-[295px] min-h-screen">
-        {/* =================================================
-            HEADER
-        ================================================= */}
-
-        <header className="relative z-20 flex h-[78px] items-center justify-between bg-white px-8">
+      <main className="ml-[280px] min-h-screen">
+        {/* TOP NAVBAR */}
+        <header className="relative z-30 flex h-[72px] items-center justify-between border-b border-[#E2E8F0] bg-white px-8">
           <div>
-            <h1 className="text-[25px] font-bold leading-tight text-[#111111]">
-              Berita Acara Staff Administrasi
-            </h1>
-
-            <p className="mt-1 text-[12px] text-[#687588]">
-              Sistem Informasi Yudisium Terpadu DTEDI SV UGM
-            </p>
+            <h1 className="text-[20px] font-bold text-[#0F172A]">Berita Acara Staff Administrasi</h1>
+            <p className="text-[10.5px] text-[#64748B]">Sistem Informasi Yudisium Terpadu DTEDI SV UGM</p>
           </div>
 
           <div className="relative">
             <button
               type="button"
-              onClick={(event) => {
-                event.stopPropagation()
-                setProfileOpen((value) => !value)
-              }}
-              className="flex items-center gap-3 rounded-xl px-2 py-2 transition hover:bg-gray-50"
+              onClick={() => setProfileOpen(!profileOpen)}
+              className="flex items-center gap-2.5 rounded-xl p-1.5 transition hover:bg-[#F8FAFC]"
             >
               <ProfileAvatar photo={user?.avatar} />
-
-              <span className="max-w-[250px] truncate text-[14px] font-bold text-[#111111]">
-                {displayName}
-              </span>
-
-              <ChevronDown
-                size={16}
-                className={`transition-transform ${
-                  profileOpen ? 'rotate-180' : ''
-                }`}
-              />
+              <span className="max-w-[200px] truncate text-[12px] font-bold text-[#1E293B]">{displayName}</span>
+              <ChevronDown size={14} className={`text-[#64748B] transition-transform ${profileOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {profileOpen && (
@@ -529,1438 +608,553 @@ function BeritaAcara() {
           </div>
         </header>
 
-        {/* =================================================
-            CONTENT
-        ================================================= */}
-
-        <main className="px-7 py-7">
-          {/* =================================================
-              INTRO
-          ================================================= */}
-
-          <section className="rounded-2xl bg-white px-9 py-7 shadow-[0_5px_15px_rgba(0,0,0,0.07)]">
-            <h2 className="text-[23px] font-bold text-[#111111]">
-              Pengelolaan Berita Acara Yudisium
-            </h2>
-
-            <p className="mt-2 text-[14px] text-[#687588]">
-              Penyusunan dan validasi data kelulusan mahasiswa
-              terverifikasi per program studi untuk penyusunan
-              dokumen Berita Acara.
+        {/* CONTAINER */}
+        <div className="mx-auto max-w-[1100px] px-8 py-6">
+          <section className="rounded-2xl border border-[#E2E8F0] bg-white p-6 shadow-xs">
+            <h2 className="text-[18px] font-bold text-[#0F172A]">Pengelolaan Berita Acara Yudisium</h2>
+            <p className="mt-1 text-[11px] text-[#64748B]">
+              Kirim draf data ke mahasiswa, lakukan checklist akhir, lalu ajukan Berita Acara per program studi ke Kaprodi.
             </p>
           </section>
 
-          {/* =================================================
-              KONFIGURASI
-          ================================================= */}
-
-          <section className="mt-6 rounded-2xl bg-white px-8 py-6 shadow-[0_5px_15px_rgba(0,0,0,0.07)]">
-            <h3 className="text-[16px] font-bold text-[#111111]">
-              Konfigurasi Dokumen Berita Acara
-            </h3>
-
-            <div className="mt-6 grid grid-cols-[1.15fr_0.75fr_1.15fr] gap-3">
-              <FormField
-                label="Nomor Dokumen Berita Acara"
-                required
-                value={nomorDokumen}
-                onChange={(value) => {
-                  setNomorDokumen(value)
-                  setIsSaved(false)
-                }}
-                placeholder="Contoh: 104/UN1/SV/DTEDI/BA-YUD/VI/2024"
-              />
-
-              <FormField
-                label="Tanggal Dokumen"
-                required
-                value={tanggalDokumen}
-                onChange={(value) => {
-                  setTanggalDokumen(value)
-                  setIsSaved(false)
-                }}
-                placeholder="Contoh: 28 Juni 2024"
-              />
-
-              <FormField
-                label="Periode Yudisium"
-                required
-                value={periodeYudisium}
-                onChange={(value) => {
-                  setPeriodeYudisium(value)
-                  setIsSaved(false)
-                }}
-                placeholder="Contoh: Periode Juni 2024 (Genap 2023/2024)"
-              />
+          {notice && (
+            <div
+              className={`mt-5 flex items-center justify-between rounded-xl border px-4 py-3 text-[11px] font-medium ${
+                notice.type === 'success'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : 'border-rose-200 bg-rose-50 text-rose-700'
+              }`}
+            >
+              <span>{notice.text}</span>
+              <button onClick={() => setNotice(null)}>
+                <X size={13} />
+              </button>
             </div>
+          )}
 
-            <div className="mt-5 flex justify-end">
+          {loadError && (
+            <div className="mt-5 flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 px-5 py-3 text-[11px] text-rose-700">
+              <span>{loadError}</span>
+              <button
+                onClick={() => {
+                  setLoading(true)
+                  loadAll()
+                }}
+                className="rounded-lg border border-rose-200 bg-white px-3 py-1 font-bold"
+              >
+                Coba lagi
+              </button>
+            </div>
+          )}
+
+          {/* KONFIGURASI DOKUMEN */}
+          <section className="mt-5 rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-xs">
+            <h3 className="text-[13.5px] font-bold text-[#0F172A]">Konfigurasi Dokumen Berita Acara</h3>
+            <p className="mt-0.5 text-[10.5px] text-[#64748B]">
+              Nilai di bawah dikirim ke backend bersamaan dengan pengajuan Berita Acara.
+            </p>
+            <div className="mt-4 grid grid-cols-2 gap-4">
+              <div>
+                <label className="mb-1 block text-[9.5px] font-bold text-[#475569]">Periode Yudisium (Event)</label>
+                <div className="relative">
+                  <select
+                    value={effectiveEvent ? String(effectiveEvent.id) : ''}
+                    onChange={(e) => {
+                      setPickedEventId(e.target.value)
+                      setPeriodeDraft(null)
+                    }}
+                    className={`${fieldCls} appearance-none pr-8`}
+                  >
+                    {events.length === 0 && <option value="">Belum ada periode</option>}
+                    {events.map((ev) => (
+                      <option key={ev.id} value={ev.id}>
+                        {ev.nama_event} — {ev.periode}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B]" />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-[9.5px] font-bold text-[#475569]">Periode (tercetak di dokumen)</label>
+                <input
+                  type="text"
+                  value={periodeText}
+                  onChange={(e) => {
+                    setPeriodeDraft(e.target.value)
+                    setIsConfigSaved(false)
+                  }}
+                  placeholder="Genap 2025/2026"
+                  className={fieldCls}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[9.5px] font-bold text-[#475569]">Nomor Surat</label>
+                <input
+                  type="text"
+                  value={nomorSurat}
+                  onChange={(e) => {
+                    setNomorSurat(e.target.value)
+                    setIsConfigSaved(false)
+                  }}
+                  maxLength={100}
+                  placeholder="BA/001/DTEDI/2026"
+                  className={fieldCls}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[9.5px] font-bold text-[#475569]">Tanggal Surat</label>
+                <input
+                  type="date"
+                  value={tanggalSurat}
+                  onChange={(e) => {
+                    setTanggalSurat(e.target.value)
+                    setIsConfigSaved(false)
+                  }}
+                  className={fieldCls}
+                />
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end">
               <button
                 type="button"
-                onClick={handleSaveConfiguration}
-                disabled={isSaved}
-                className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white transition ${
-                  isSaved
-                    ? 'bg-[#22912C]'
-                    : 'bg-[#8998AA] hover:bg-[#748598]'
+                onClick={() => setIsConfigSaved(true)}
+                disabled={isConfigSaved}
+                className={`flex h-[34px] items-center gap-1.5 rounded-xl px-4 text-[10.5px] font-bold text-white transition ${
+                  isConfigSaved ? 'bg-[#137333]' : 'bg-[#0A477F] hover:bg-[#083866]'
                 }`}
               >
-                {isSaved ? (
+                {isConfigSaved ? (
                   <>
-                    Data Tersimpan
-                    <span className="text-base">✓</span>
+                    Siap Dikirim <Check size={14} />
                   </>
                 ) : (
                   <>
-                    Simpan Perubahan
-                    <Save size={15} />
+                    Terapkan <Save size={14} />
                   </>
                 )}
               </button>
             </div>
           </section>
 
-          {/* =================================================
-              PROGRAM STUDI
-          ================================================= */}
-
-          <section className="mt-6 rounded-2xl bg-white px-3 py-6 shadow-[0_5px_15px_rgba(0,0,0,0.07)]">
-            <div className="px-5">
-              <h3 className="text-[16px] font-bold text-[#111111]">
-                Pilih Program Studi Berita Acara
-              </h3>
-            </div>
-
-            <div className="mt-5 grid grid-cols-4 gap-2">
-              {PROGRAM_STUDI.map((prodi) => {
-                const count = students.filter(
-                  (student) => student.prodi === prodi.kode
-                ).length
-
-                const readyCount = students.filter(
-                  (student) =>
-                    student.prodi === prodi.kode &&
-                    student.confirmationStatus === 'SUDAH BENAR'
-                ).length
-
-                const active =
-                  selectedProdi === prodi.kode
-
+          {/* PILIH PROGRAM STUDI */}
+          <section className="mt-5 rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-xs">
+            <h3 className="text-[13.5px] font-bold text-[#0F172A]">Pilih Program Studi Berita Acara</h3>
+            <div className="mt-3.5 grid grid-cols-4 gap-3">
+              {prodis.map((p) => {
+                const list = pengajuan.filter((s) => String(s.prodiId) === String(p.id) && !s.beritaAcaraId)
+                const lengkap = list.filter((s) => statusAtribut(s) === 'LENGKAP').length
+                const active = selectedProdiId === String(p.id)
                 return (
-                  <ProgramCard
-                    key={prodi.kode}
-                    kode={prodi.kode}
-                    nama={prodi.nama}
-                    count={count}
-                    readyCount={readyCount}
-                    active={active}
-                    onClick={() =>
-                      handleSelectProdi(prodi.kode)
-                    }
-                  />
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      setPickedProdiId(String(p.id))
+                      setSearch('')
+                      setPage(1)
+                      if (activeTab === 'history') switchTab('active')
+                    }}
+                    className={`flex flex-col justify-between rounded-xl p-3.5 text-left transition ${
+                      active ? 'border-2 border-[#0A477F] bg-[#EEF4FF]' : 'border border-[#E2E8F0] bg-[#F8FAFC] hover:border-[#CBD5E1]'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <span className="rounded-lg bg-[#0A477F] px-2 py-0.5 text-[9.5px] font-bold text-white">{p.kode}</span>
+                        <span className="text-[10px] font-medium text-[#475569]">{list.length} Mahasiswa</span>
+                      </div>
+                      <h4 className="mt-2.5 text-[11px] font-bold leading-4 text-[#0F172A]">{p.nama}</h4>
+                    </div>
+                    <div className="mt-4 flex items-center justify-between text-[9.5px] font-bold text-[#0A477F]">
+                      <span>
+                        {lengkap}/{list.length} Atribut Lengkap
+                      </span>
+                      <ArrowRight size={12} />
+                    </div>
+                  </button>
                 )
               })}
+              {!loading && prodis.length === 0 && <p className="col-span-4 text-[11px] text-[#94A3B8]">Belum ada program studi.</p>}
             </div>
           </section>
 
-          {/* =================================================
-              DAFTAR MAHASISWA
-          ================================================= */}
-
-          <section className="mt-6 overflow-hidden rounded-2xl bg-white shadow-[0_5px_15px_rgba(0,0,0,0.07)]">
-            <div className="px-9 py-7">
-              <h3 className="text-[16px] font-bold text-[#111111]">
-                Daftar Mahasiswa {selectedProdi}
-              </h3>
-
-              <div className="mt-5 grid grid-cols-[1fr_0.72fr_0.72fr] gap-2">
-                <div className="relative">
-                  <Search
-                    size={17}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8A98AA]"
-                  />
-
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(event) =>
-                      setSearch(event.target.value)
-                    }
-                    placeholder="Cari Nama / NIM..."
-                    className="h-11 w-full rounded-xl border border-[#D5DFEA] bg-white pl-10 pr-4 text-sm text-[#526780] outline-none focus:border-[#4B7CA7]"
-                  />
+          {/* BANNER REVISI */}
+          {needRevision.length > 0 && (
+            <section className="mt-5 rounded-2xl border border-[#FCD34D] bg-[#FFFBEB] p-4 text-[#92400E]">
+              <div className="flex items-start gap-3">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#FDE68A] text-[#D97706]">
+                  <AlertTriangle size={16} />
                 </div>
-
-                <select
-                  value={statusFilter}
-                  onChange={(event) =>
-                    setStatusFilter(event.target.value)
-                  }
-                  className="h-11 rounded-xl border border-[#D5DFEA] bg-white px-4 text-sm text-[#526780] outline-none"
-                >
-                  <option>Semua Status</option>
-                  <option>SUDAH BENAR</option>
-                  <option>PERLU REVISI</option>
-                </select>
-
-                <select
-                  value={emailFilter}
-                  onChange={(event) =>
-                    setEmailFilter(event.target.value)
-                  }
-                  className="h-11 rounded-xl border border-[#D5DFEA] bg-white px-4 text-sm text-[#526780] outline-none"
-                >
-                  <option>Semua Status</option>
-                  <option>TERKIRIM</option>
-                  <option>GAGAL</option>
-                  <option>-</option>
-                </select>
+                <div className="text-[11px]">
+                  <h4 className="font-bold text-[#B45309]">
+                    {needRevision.length} mahasiswa {selectedProdi?.kode} meminta revisi data
+                  </h4>
+                  <p className="mt-0.5 leading-4 text-[#78350F]">
+                    {needRevision.map((s, i) => (
+                      <span key={s.id} className="font-semibold">
+                        {i > 0 && ', '}({i + 1}) {s.nama}
+                      </span>
+                    ))}{' '}
+                    — perbaiki data penilaian di halaman Pengajuan Yudisium, lalu kirim ulang konfirmasi.
+                  </p>
+                </div>
               </div>
-            </div>
+            </section>
+          )}
 
-            {filteredStudents.length > 0 ? (
-              <StudentTable
-                students={filteredStudents}
-                allVisibleSelected={allVisibleSelected}
-                onToggleAll={handleToggleAll}
-                onToggleStudent={handleToggleStudent}
-                onOpenModal={openModal}
-                actionMenuId={actionMenuId}
-                setActionMenuId={setActionMenuId}
-                onFixData={handleFixData}
-                onResendEmail={handleResendEmail}
-              />
-            ) : (
-              <EmptyState
-                selectedProdi={selectedProdi}
-                navigate={navigate}
-              />
-            )}
-
-            {/* =================================================
-                FOOTER TABLE
-            ================================================= */}
-
-            {filteredStudents.length > 0 && (
-              <TableFooter
-                count={filteredStudents.length}
-                selectedForKaprodi={selectedForKaprodi}
-                selectedForEmail={selectedForEmail}
-                onSubmitToKaprodi={handleSubmitToKaprodi}
-                onSendEmail={handleSendEmail}
-              />
-            )}
-          </section>
-        </main>
-      </div>
-
-      {/* =====================================================
-          MODAL BERITA ACARA
-      ===================================================== */}
-
-      {selectedStudent && modalMode && (
-        <BeritaAcaraModal
-          student={selectedStudent}
-          mode={modalMode}
-          onClose={closeModal}
-          onChange={handleChangeBA}
-          onSave={handleSaveBA}
-          onSubmitToKaprodi={() => {
-            setStudents((current) =>
-              current.map((student) =>
-                student.id === selectedStudent.id
-                  ? {
-                      ...student,
-                      confirmationStatus: 'SUDAH BENAR',
-                      baStatus: 'submitted',
-                    }
-                  : student
-              )
-            )
-
-            closeModal()
-          }}
-        />
-      )}
-    </div>
-  )
-}
-
-/* =========================================================
-   FORM FIELD
-========================================================= */
-
-function FormField({
-  label,
-  required,
-  value,
-  onChange,
-  placeholder,
-}) {
-  return (
-    <div>
-      <label className="mb-1.5 block text-[11px] font-bold text-[#3F4855]">
-        {label}
-        {required && (
-          <span className="ml-1 text-red-500">*</span>
-        )}
-      </label>
-
-      <input
-        type="text"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        className="h-10 w-full rounded-xl border border-[#D5DFEA] bg-white px-3 text-[12px] text-[#526780] outline-none focus:border-[#4B7CA7]"
-      />
-    </div>
-  )
-}
-
-/* =========================================================
-   PROGRAM CARD
-========================================================= */
-
-function ProgramCard({
-  kode,
-  nama,
-  count,
-  readyCount,
-  active,
-  onClick,
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`min-h-[160px] rounded-xl px-3 py-3 text-left transition ${
-        active
-          ? 'border border-[#06447B] bg-[#F0F4FF]'
-          : 'border border-transparent bg-[#F0F4FF] hover:border-[#B8CAE0]'
-      }`}
-    >
-      <div className="flex items-center justify-between">
-        <span className="rounded-lg bg-[#073E72] px-2 py-1 text-[10px] font-bold text-white">
-          {kode}
-        </span>
-
-        <span className="text-[11px] font-medium text-[#073E72]">
-          {count} Mahasiswa
-        </span>
-      </div>
-
-      {active && (
-        <span className="mt-2 inline-flex rounded-md bg-[#D9E9FF] px-2 py-1 text-[9px] font-bold text-[#174A7C]">
-          PRODI AKTIF
-        </span>
-      )}
-
-      <h4 className="mt-2 text-[13px] font-bold leading-5 text-[#073E72]">
-        {nama}
-      </h4>
-
-      <div className="mt-6 flex items-center justify-between text-[10px] font-bold text-[#073E72]">
-        <span>
-          {readyCount} Siap Diteruskan ke Kaprodi
-        </span>
-
-        <ArrowRight size={15} />
-      </div>
-    </button>
-  )
-}
-
-/* =========================================================
-   STUDENT TABLE
-========================================================= */
-
-function StudentTable({
-  students,
-  allVisibleSelected,
-  onToggleAll,
-  onToggleStudent,
-  onOpenModal,
-  actionMenuId,
-  setActionMenuId,
-  onFixData,
-  onResendEmail,
-}) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[900px]">
-        {/* HEADER */}
-        <thead>
-          <tr className="border-y border-[#DDE5ED] bg-[#F1F5F9] text-left text-[9px] font-bold uppercase tracking-wide text-[#667386]">
-            <th className="w-[40 px] px-3 py-4">
-              <input
-                type="checkbox"
-                checked={allVisibleSelected}
-                onChange={onToggleAll}
-                className="h-4 w-4 accent-[#06447B]"
-              />
-            </th>
-
-            <th className="px-3 py-4">
-              Mahasiswa
-            </th>
-
-            <th className="px-3 py-4">
-              Predikat Kelulusan
-            </th>
-
-            <th className="px-3 py-4">
-              Status Email
-            </th>
-
-            <th className="px-3 py-4">
-              Status Konfirmasi
-            </th>
-
-            <th className="px-3 py-4 text-center">
-              Aksi
-            </th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {students.map((student) => (
-            <StudentRow
-              key={student.id}
-              student={student}
-              onToggleStudent={onToggleStudent}
-              onOpenModal={onOpenModal}
-              actionMenuId={actionMenuId}
-              setActionMenuId={setActionMenuId}
-              onFixData={onFixData}
-              onResendEmail={onResendEmail}
-            />
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-/* =========================================================
-   STUDENT ROW
-========================================================= */
-
-function StudentRow({
-  student,
-  onToggleStudent,
-  onOpenModal,
-  actionMenuId,
-  setActionMenuId,
-  onFixData,
-  onResendEmail,
-}) {
-  const showActionMenu =
-    actionMenuId === student.id
-
-  const canUseMore = student.emailStatus === 'GAGAL'
-  const getMainAction = () => {
-    if (student.baStatus === 'empty') {
-      return {
-        label: 'Isi Berita Acara',
-        mode: 'empty',
-      }
-    }
-
-    if (student.confirmationStatus === 'PERLU REVISI') {
-      return {
-        label: 'Koreksi Berita Acara',
-        mode: 'edit',
-      }
-    }
-
-    return {
-      label: 'Lihat Berita Acara',
-      mode: 'view',
-    }
-  }
-
-  const mainAction = getMainAction()
-
-  return (
-    <tr
-      className={`border-b border-[#EDF1F5] last:border-b-0 ${
-        student.confirmationStatus === 'PERLU REVISI'
-          ? 'border-l-2 border-l-[#E53958]'
-          : ''
-      }`}
-    >
-      {/* CHECKBOX */}
-
-      <td className="px-3 py-4">
-        <input
-          type="checkbox"
-          checked={student.selected}
-          onChange={() => onToggleStudent(student.id)}
-          className="h-4 w-4 accent-[#06447B]"
-        />
-      </td>
-
-      {/* MAHASISWA */}
-
-      <td className="px-3 py-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#DDEAFF] text-[10px] font-bold text-[#28588C]">
-            {getInitials(student.nama)}
-          </div>
-
-          <div>
-            <p className="text-[11px] font-bold leading-4 text-[#172033]">
-              {student.nama}
-            </p>
-
-            <p className="mt-0.5 text-[9px] text-[#7B8797]">
-              {student.nim}
-            </p>
-          </div>
-        </div>
-      </td>
-
-      {/* PREDIKAT */}
-
-      <td className="px-3 py-4 text-[10px] text-[#596577]">
-        {student.predikat}
-      </td>
-
-      {/* EMAIL */}
-
-      <td className="px-3 py-4">
-        <EmailStatus status={student.emailStatus} />
-      </td>
-
-      {/* KONFIRMASI */}
-
-      <td className="px-3 py-4">
-        <ConfirmationStatus
-          status={student.confirmationStatus}
-        />
-      </td>
-
-      {/* AKSI */}
-
-      <td className="px-3 py-4">
-        <div className="relative flex items-center justify-start gap-2">
-          <button
-            type="button"
-            onClick={() =>
-              onOpenModal(student, mainAction.mode)
-            }
-            className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-[10px] font-bold transition ${
-              mainAction.mode === 'view'
-                ? 'border-[#C8D5E3] bg-white text-[#26384D] hover:bg-[#F7F9FC]'
-                : 'border-[#C8D5E3] bg-white text-[#26384D] hover:bg-[#F7F9FC]'
-            }`}
-          >
-            <FileText size={13} />
-            {mainAction.label}
-          </button>
-
-          {student.baStatus === 'confirmed' && (
+          {/* TAB SWAPPER */}
+          <div className="mt-5 inline-flex rounded-xl bg-[#E2E8F0] p-1">
             <button
               type="button"
-              onClick={() =>
-                onOpenModal(student, 'view')
-              }
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#C8D5E3] bg-white text-[#244D7A] hover:bg-[#F5F8FC]"
-              title="Serahkan kepada Kaprodi"
+              onClick={() => switchTab('active')}
+              className={`flex h-[32px] items-center gap-2 rounded-lg px-3.5 text-[10.5px] font-bold transition ${
+                activeTab === 'active' ? 'bg-white text-[#0A477F] shadow-xs' : 'text-[#64748B]'
+              }`}
             >
-              <Send size={15} />
+              <Inbox size={13} /> Penyusunan Berita Acara Aktif
+              <span className="rounded-full bg-[#E0ECFB] px-2 py-0.5 text-[8.5px] text-[#0A477F]">{prodiStudents.length}</span>
             </button>
-          )}
-
-          {student.emailStatus === 'TERKIRIM' &&
-            student.confirmationStatus === 'PERLU REVISI' && (
-              <button
-                type="button"
-                onClick={() => {
-                  onOpenModal(student, 'edit')
-                }}
-                className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#C8D5E3] bg-white text-[#244D7A]"
-                title="Kirim email"
-              >
-                <Mail size={15} />
-              </button>
-            )}
-
-          {canUseMore && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation()
-
-                  setActionMenuId((current) =>
-                    current === student.id
-                      ? null
-                      : student.id
-                  )
-                }}
-                className={`flex h-9 w-9 items-center justify-center rounded-lg border transition ${
-                  showActionMenu
-                    ? 'border-[#E54A62] bg-[#FFF5F6] text-[#D72F4B]'
-                    : 'border-[#F1B5BF] bg-[#FFF7F8] text-[#D72F4B]'
-                }`}
-                title="Tindakan lainnya"
-              >
-                <MoreHorizontal size={17} />
-              </button>
-
-              {showActionMenu && (
-                <ActionMenu
-                  student={student}
-                  onFixData={onFixData}
-                  onResendEmail={onResendEmail}
-                />
-              )}
-            </div>
-          )}
-        </div>
-      </td>
-    </tr>
-  )
-}
-
-/* =========================================================
-   EMAIL STATUS
-========================================================= */
-
-function EmailStatus({ status }) {
-  if (status === 'TERKIRIM') {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-[#7DE2B5] bg-[#E8FFF3] px-2 py-1 text-[8px] font-bold text-[#16845A]">
-        <span className="h-1.5 w-1.5 rounded-full bg-[#21A66F]" />
-        TERKIRIM
-      </span>
-    )
-  }
-
-  if (status === 'GAGAL') {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-[#FFB8C3] bg-[#FFF0F2] px-2 py-1 text-[8px] font-bold text-[#D72F4B]">
-        <span className="h-1.5 w-1.5 rounded-full bg-[#E53D58]" />
-        GAGAL
-      </span>
-    )
-  }
-
-  return (
-    <span className="text-[10px] text-[#8A98AA]">
-      -
-    </span>
-  )
-}
-
-/* =========================================================
-   CONFIRMATION STATUS
-========================================================= */
-
-function ConfirmationStatus({ status }) {
-  if (status === 'SUDAH BENAR') {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-[#7DE2B5] bg-[#E8FFF3] px-2 py-1 text-[8px] font-bold text-[#16845A]">
-        <span className="h-1.5 w-1.5 rounded-full bg-[#21A66F]" />
-        SUDAH BENAR
-      </span>
-    )
-  }
-
-  if (status === 'PERLU REVISI') {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-[#FFB8C3] bg-[#FFF0F2] px-2 py-1 text-[8px] font-bold text-[#D72F4B]">
-        <span className="h-1.5 w-1.5 rounded-full bg-[#E53D58]" />
-        PERLU REVISI
-      </span>
-    )
-  }
-
-  return (
-    <span className="text-[10px] text-[#8A98AA]">
-      -
-    </span>
-  )
-}
-
-/* =========================================================
-   ACTION MENU
-========================================================= */
-
-function ActionMenu({
-  student,
-  onFixData,
-  onResendEmail,
-}) {
-  return (
-    <div
-      onClick={(event) => event.stopPropagation()}
-      className="absolute right-0 top-[43px] z-50 w-[205px] overflow-hidden rounded-xl border border-[#DCE3EB] bg-white shadow-[0_12px_30px_rgba(20,43,70,0.15)]"
-    >
-      <div className="px-4 pb-2 pt-4">
-        <p className="text-[8px] font-bold uppercase tracking-[0.8px] text-[#71809A]">
-          Tindakan diperlukan
-        </p>
-      </div>
-
-      <button
-        type="button"
-        onClick={() => onFixData(student)}
-        className="flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-[#FFF7F8]"
-      >
-        <Pencil
-          size={16}
-          className="mt-0.5 shrink-0 text-[#D72F4B]"
-        />
-
-        <div>
-          <p className="text-[10px] font-bold text-[#B91C3B]">
-            Perbaiki data
-          </p>
-
-          <p className="mt-0.5 text-[8px] text-[#8A98AA]">
-            Tinjau catatan mahasiswa
-          </p>
-        </div>
-      </button>
-
-      <button
-        type="button"
-        onClick={() => onResendEmail(student)}
-        className="flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-[#FFF7F8]"
-      >
-        <RotateCcw
-          size={16}
-          className="mt-0.5 shrink-0 text-[#D72F4B]"
-        />
-
-        <div>
-          <p className="text-[10px] font-bold text-[#B91C3B]">
-            Resend email
-          </p>
-
-          <p className="mt-0.5 text-[8px] text-[#8A98AA]">
-            Kirim ulang email yang gagal
-          </p>
-        </div>
-      </button>
-    </div>
-  )
-}
-
-/* =========================================================
-   TABLE FOOTER
-========================================================= */
-
-function TableFooter({
-  count,
-  selectedForKaprodi,
-  selectedForEmail,
-  onSubmitToKaprodi,
-  onSendEmail,
-}) {
-  return (
-    <div className="flex items-center justify-between border-t border-[#E7ECF2] px-7 py-4">
-      <span className="text-[12px] text-[#596577]">
-        Menampilkan {count} pengajuan
-      </span>
-
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onSubmitToKaprodi}
-          disabled={selectedForKaprodi === 0}
-          className={`flex h-9 items-center gap-2 rounded-lg border px-4 text-[10px] font-bold transition ${
-            selectedForKaprodi > 0
-              ? 'border-[#C8D5E3] bg-white text-[#26384D] hover:bg-[#F7F9FC]'
-              : 'border-[#D8E0E8] bg-white text-[#9AA6B4]'
-          }`}
-        >
-          <Send size={14} />
-          Serahkan kepada Kaprodi ({selectedForKaprodi})
-        </button>
-
-        <button
-          type="button"
-          onClick={onSendEmail}
-          disabled={selectedForEmail === 0}
-          className={`flex h-9 items-center gap-2 rounded-lg border px-4 text-[10px] font-bold transition ${
-            selectedForEmail > 0
-              ? 'border-[#C8D5E3] bg-white text-[#26384D] hover:bg-[#F7F9FC]'
-              : 'border-[#D8E0E8] bg-white text-[#9AA6B4]'
-          }`}
-        >
-          <Mail size={14} />
-          Kirim via Email ({selectedForEmail})
-        </button>
-
-        <button
-          type="button"
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#D8E0E8] bg-white text-[#536275]"
-        >
-          <ChevronLeft size={15} />
-        </button>
-
-        <button
-          type="button"
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#C6D2E0] bg-[#EFF4FB] text-[10px] font-bold text-[#173D67]"
-        >
-          1
-        </button>
-
-        <button
-          type="button"
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#D8E0E8] bg-white text-[#536275]"
-        >
-          <ChevronRight size={15} />
-        </button>
-      </div>
-    </div>
-  )
-}
-
-/* =========================================================
-   EMPTY STATE
-========================================================= */
-
-function EmptyState({
-  selectedProdi,
-  navigate,
-}) {
-  return (
-    <div className="flex min-h-[500px] flex-col items-center justify-center px-8 text-center">
-    <div className="relative mx-auto h-[128px] w-[128px] rounded-[28px] bg-[#EEF3FF]">
-      <div className="absolute inset-[20px] flex items-center justify-center rounded-[22px] bg-white">
-        <FileSearchIcon
-          size={50}
-          strokeWidth={3}
-          className="text-[#85888D]"
-        />
-      </div>
-
-      <div className="absolute -right-[5px] -top-[5px] flex h-[30px] w-[30px] items-center justify-center rounded-full bg-[#FFBE3B]">
-        <span className="text-[16px] font-black leading-none text-[#071A2D]">
-          !
-        </span>
-      </div>
-    </div>
-
-      <h3 className="mt-7 text-[17px] font-bold text-[#14243A]">
-        Belum Ada Mahasiswa Siap Diproses
-      </h3>
-
-      <p className="mt-4 max-w-[520px] text-[12px] leading-6 text-[#687588]">
-        Belum ada mahasiswa dari program studi {selectedProdi}{' '}
-        yang siap diproses. Data akan muncul otomatis setelah Staf Akademik 
-        menyelesaikan pemeriksaan.
-      </p>
-
-      <button
-        type="button"
-        onClick={() =>
-          navigate('/admin/pengajuan-yudisium')
-        }
-        className="mt-7 rounded-xl bg-[#0B2038] px-7 py-3 text-[11px] font-bold text-white transition hover:bg-[#173653]"
-      >
-        Ke Halaman Pengajuan Yudisium
-      </button>
-    </div>
-  )
-}
-
-/* =========================================================
-   BERITA ACARA MODAL
-========================================================= */
-
-function BeritaAcaraModal({
-  student,
-  mode,
-  onClose,
-  onChange,
-  onSave,
-  onSubmitToKaprodi,
-}) {
-  const isView = mode === 'view'
-  const isEdit = mode === 'edit'
-  const isEmpty = mode === 'empty'
-
-  const isRevision =
-    student.confirmationStatus === 'PERLU REVISI'
-
-  const isConfirmed =
-    student.confirmationStatus === 'SUDAH BENAR'
-
-  const title =
-    isView && isConfirmed
-      ? 'Isi Berita Acara'
-      : 'Isi Berita Acara'
-
-  const getValue = (field) => {
-    return student.dataBA?.[field] || ''
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-[#031A2B]/60 px-6 py-8"
-      onClick={onClose}
-    >
-      <div
-        className="flex max-h-[92vh] w-full max-w-[1000px] flex-col overflow-hidden rounded-2xl bg-[#F4F7FB] shadow-[0_25px_70px_rgba(0,0,0,0.25)]"
-        onClick={(event) => event.stopPropagation()}
-      >
-        {/* =================================================
-            MODAL HEADER
-        ================================================= */}
-
-        <div className="flex items-start justify-between border-b border-[#DDE4EC] bg-white px-7 py-5">
-          <div>
-            <h2 className="text-[17px] font-bold text-[#111827]">
-              {title}
-            </h2>
-
-            <p className="mt-1 text-[11px] text-[#71809A]">
-              Pengisian Draft Berita Acara
-            </p>
+            <button
+              type="button"
+              onClick={() => switchTab('history')}
+              className={`flex h-[32px] items-center gap-2 rounded-lg px-3.5 text-[10.5px] font-bold transition ${
+                activeTab === 'history' ? 'bg-white text-[#0A477F] shadow-xs' : 'text-[#64748B]'
+              }`}
+            >
+              <History size={13} /> Histori Berita Acara
+              <span className="rounded-full bg-[#E0ECFB] px-2 py-0.5 text-[8.5px] text-[#0A477F]">{baGroups.length}</span>
+            </button>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="mt-1 text-[#172033] transition hover:text-[#D72F4B]"
-          >
-            <X size={19} />
-          </button>
-        </div>
-
-        {/* =================================================
-            MODAL CONTENT
-        ================================================= */}
-
-        <div className="overflow-y-auto px-7 py-7">
-          {/* =================================================
-              REVISION ALERT
-          ================================================= */}
-
-          {isRevision && (
-            <div className="mb-6 rounded-xl border border-[#F3D77B] bg-[#FFF9E8] px-4 py-4">
-              <div className="flex items-start gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#FFF0C5]">
-                  <AlertCircle
-                    size={19}
-                    className="text-[#D58B00]"
-                  />
+          {/* MAIN CARD TABEL */}
+          <section className="mt-3.5 overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white shadow-xs">
+            <div className="p-5 pb-0">
+              {activeTab === 'history' && selectedBa && (
+                <div className="mb-3.5 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedBaKey(null)
+                      setPage(1)
+                    }}
+                    className="flex h-[30px] items-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 text-[10px] font-bold text-[#475569] hover:bg-[#F1F5F9]"
+                  >
+                    <ChevronLeft size={13} /> Kembali
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openPreview(selectedBa.id)}
+                      className="flex h-[30px] items-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 text-[10px] font-bold text-[#475569] hover:bg-[#F1F5F9]"
+                    >
+                      <Eye size={13} /> Lihat Draft
+                    </button>
+                    <button
+                      type="button"
+                      disabled={downloading}
+                      onClick={() => handleDownload(selectedBa.id)}
+                      className="flex h-[30px] items-center gap-1.5 rounded-xl bg-[#0A477F] px-3 text-[10px] font-bold text-white hover:bg-[#083866] disabled:opacity-60"
+                    >
+                      {downloading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Unduh PDF
+                    </button>
+                  </div>
                 </div>
+              )}
 
-                <div>
-                  <h3 className="text-[13px] font-bold text-[#8C421B]">
-                    Mahasiswa Meminta Perbaikan Data
-                  </h3>
+              <h3 className="text-[13.5px] font-bold text-[#0F172A]">
+                {activeTab === 'active'
+                  ? `Daftar Mahasiswa ${selectedProdi?.kode || ''}${effectiveEvent ? ` - ${effectiveEvent.nama_event}` : ''}`
+                  : selectedBa
+                  ? `Berita Acara ${selectedBa.prodiNama} - ${selectedBa.eventNama}`
+                  : 'Histori Berita Acara Yudisium'}
+              </h3>
+              <p className="mt-0.5 text-[10.5px] text-[#64748B]">
+                {activeTab === 'active'
+                  ? 'Mahasiswa yang belum masuk Berita Acara. Yang sudah diajukan ke Kaprodi pindah ke tab Histori.'
+                  : 'Berita Acara yang sudah diajukan ke Kaprodi. Mahasiswa di dalamnya tidak dapat diajukan kembali.'}
+              </p>
 
-                  <p className="mt-1 text-[11px] leading-5 text-[#7C6940]">
-                    Mahasiswa menemukan data yang tidak sesuai
-                    pada draft Berita Acara. Periksa catatan di
-                    bawah, lalu perbarui data melalui tombol Isi
-                    Berita Acara.
-                  </p>
+              {/* SEARCH & FILTER BAR */}
+              {!showingGroups && (
+                <div className="mt-3.5 flex items-center gap-2.5">
+                  <div className="relative w-[300px]">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+                    <input
+                      type="text"
+                      value={search}
+                      onChange={(e) => {
+                        setSearch(e.target.value)
+                        setPage(1)
+                      }}
+                      placeholder="Cari Nama / NIM..."
+                      className="h-[36px] w-full rounded-xl border border-[#CBD5E1] bg-white pl-8 pr-3 text-[10.5px] text-[#1E293B] outline-none placeholder:text-[#94A3B8] focus:border-[#0A477F]"
+                    />
+                  </div>
+                  <div className="relative w-[160px]">
+                    <select
+                      value={filterAtribut}
+                      onChange={(e) => {
+                        setFilterAtribut(e.target.value)
+                        setPage(1)
+                      }}
+                      className="h-[36px] w-full appearance-none rounded-xl border border-[#CBD5E1] bg-white px-3 pr-8 text-[10.5px] text-[#475569] outline-none focus:border-[#0A477F]"
+                    >
+                      <option value="">Status Atribut</option>
+                      <option>LENGKAP</option>
+                      <option>BELUM LENGKAP</option>
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B]" />
+                  </div>
+                  <div className="relative w-[190px]">
+                    <select
+                      value={filterKonfirmasi}
+                      onChange={(e) => {
+                        setFilterKonfirmasi(e.target.value)
+                        setPage(1)
+                      }}
+                      className="h-[36px] w-full appearance-none rounded-xl border border-[#CBD5E1] bg-white px-3 pr-8 text-[10.5px] text-[#475569] outline-none focus:border-[#0A477F]"
+                    >
+                      <option value="">Status Konfirmasi</option>
+                      <option>TERKONFIRMASI</option>
+                      <option>MENUNGGU KONFIRMASI</option>
+                      <option>PERLU REVISI</option>
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B]" />
+                  </div>
                 </div>
-              </div>
-
-              <div className="mt-4 rounded-xl border border-[#F3D77B] bg-white px-4 py-3">
-                <ol className="space-y-1 text-[11px] text-[#273348]">
-                  {(student.catatanRevisi || []).map(
-                    (catatan, index) => (
-                      <li key={index}>
-                        {index + 1}. {catatan}
-                      </li>
-                    )
-                  )}
-                </ol>
-              </div>
-            </div>
-          )}
-
-          {/* =================================================
-              CONFIRMED ALERT
-          ================================================= */}
-
-          {isConfirmed && (
-            <div className="mb-6 flex items-center justify-between rounded-xl bg-[#ECFBF4] px-5 py-4">
-              <div className="flex items-start gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#D1F6E3]">
-                  <CheckCircle2
-                    size={20}
-                    className="text-[#178A5D]"
-                  />
-                </div>
-
-                <div>
-                  <h3 className="text-[13px] font-bold text-[#104C3A]">
-                    Data Telah Dikonfirmasi Mahasiswa
-                  </h3>
-
-                  <p className="mt-1 text-[11px] leading-5 text-[#467567]">
-                    Mahasiswa telah memastikan seluruh data pada
-                    draft Berita Acara ini benar. Draft siap
-                    diserahkan kepada Kaprodi untuk diproses lebih
-                    lanjut.
-                  </p>
-                </div>
-              </div>
-
-              {isView && (
-                <button
-                  type="button"
-                  onClick={onSubmitToKaprodi}
-                  className="flex shrink-0 items-center gap-2 rounded-xl bg-[#06447B] px-5 py-3 text-[11px] font-bold text-white"
-                >
-                  Serahkan Kepada Kaprodi
-                  <ArrowRight size={15} />
-                </button>
               )}
             </div>
-          )}
 
-          {/* =================================================
-              STUDENT CARD
-          ================================================= */}
-
-          <section className="rounded-xl border border-[#E0E6ED] bg-white px-8 py-7 shadow-[0_4px_12px_rgba(20,43,70,0.06)]">
-            {/* STUDENT HEADER */}
-
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#DDEAFF] text-[13px] font-bold text-[#28588C]">
-                {getInitials(student.nama)}
-              </div>
-
-              <div>
-                <h3 className="text-[16px] font-bold text-[#111827]">
-                  {student.nama}
-                </h3>
-
-                <p className="mt-0.5 text-[11px] text-[#70809A]">
-                  {student.nim}
-                </p>
-              </div>
+            {/* TABEL DATA UTAMA */}
+            <div className="mt-4 overflow-x-auto">
+              {loading ? (
+                <div className="flex items-center justify-center gap-2 py-12 text-[11px] text-[#64748B]">
+                  <Loader2 size={15} className="animate-spin" /> Memuat data...
+                </div>
+              ) : showingGroups ? (
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
+                      <th className={thCls}>NO</th>
+                      <th className={thCls}>PERIODE / PRODI</th>
+                      <th className={thCls}>TANGGAL YUDISIUM</th>
+                      <th className={thCls}>STATUS BA</th>
+                      <th className={thCls}>JUMLAH</th>
+                      <th className={`${thCls} text-center`}>AKSI</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E2E8F0]">
+                    {slice(baGroups).map((g, idx) => (
+                      <tr key={g.key} className="hover:bg-[#F8FAFC]">
+                        <td className="px-5 py-3 text-[10.5px] text-[#64748B]">{String((safePage - 1) * PAGE_SIZE + idx + 1).padStart(2, '0')}</td>
+                        <td className="px-5 py-3">
+                          <p className="text-[11px] font-bold text-[#0F172A]">{g.eventNama}</p>
+                          <p className="text-[8.5px] text-[#64748B]">{g.prodiNama}</p>
+                        </td>
+                        <td className="px-5 py-3 text-[10.5px] text-[#0F172A]">{g.tanggalYudisium}</td>
+                        <td className="px-5 py-3 text-[10.5px] font-semibold uppercase text-[#0A477F]">{String(g.status).replace(/_/g, ' ')}</td>
+                        <td className="px-5 py-3 text-[10.5px] text-[#0F172A]">{g.students.length} Mahasiswa</td>
+                        <td className="px-5 py-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedBaKey(g.key)
+                              setPage(1)
+                            }}
+                            className="inline-flex h-[28px] items-center gap-1 rounded-lg bg-[#0A477F] px-3 text-[9.5px] font-bold text-white hover:bg-[#083866]"
+                          >
+                            <Eye size={11} /> Lihat
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {baGroups.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-5 py-10 text-center text-[11px] text-[#94A3B8]">
+                          Belum ada Berita Acara yang diajukan.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              ) : (
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
+                      <th className={thCls}>NO</th>
+                      <th className={thCls}>MAHASISWA</th>
+                      <th className={thCls}>STATUS PENGAJUAN</th>
+                      <th className={thCls}>STATUS ATRIBUT</th>
+                      <th className={thCls}>STATUS KONFIRMASI</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E2E8F0]">
+                    {slice(filteredStudents).map((st, idx) => {
+                      const meta = statusMeta(st.status)
+                      return (
+                        <tr key={st.id} className="hover:bg-[#F8FAFC]">
+                          <td className="px-5 py-3 text-[10.5px] text-[#64748B]">{String((safePage - 1) * PAGE_SIZE + idx + 1).padStart(2, '0')}</td>
+                          <td className="px-5 py-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#E0ECFB] text-[9.5px] font-bold text-[#0A477F]">
+                                {st.nama.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                              </div>
+                              <div>
+                                <p className="text-[11px] font-bold text-[#0F172A]">{st.nama}</p>
+                                <p className="text-[8.5px] text-[#64748B]">{st.nim}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-5 py-3 text-[10px] font-bold text-[#475569]">{meta.label}</td>
+                          <td className="px-5 py-3">
+                            <StatusBadgeAtribut status={statusAtribut(st)} />
+                          </td>
+                          <td className="px-5 py-3">
+                            <StatusBadgeKonfirmasi status={statusKonfirmasi(st)} />
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    {filteredStudents.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="px-5 py-10 text-center text-[11px] text-[#94A3B8]">
+                          Tidak ada mahasiswa yang cocok.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              )}
             </div>
 
-            {/* EMPTY INFORMATION */}
+            {/* PAGINATION FOOTER */}
+            <div className="flex items-center justify-between border-t border-[#E2E8F0] px-5 py-3.5">
+              <p className="text-[10.5px] text-[#64748B]">
+                {showingGroups ? `Menampilkan ${baGroups.length} berita acara` : `Menampilkan ${filteredStudents.length} mahasiswa`}
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={safePage <= 1}
+                  onClick={() => setPage(safePage - 1)}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#CBD5E1] bg-white text-[#64748B] disabled:opacity-40"
+                >
+                  <ChevronLeft size={13} />
+                </button>
+                <span className="flex h-7 min-w-7 items-center justify-center rounded-lg border border-[#0A477F] bg-[#E0ECFB] px-1.5 text-[10.5px] font-bold text-[#0A477F]">
+                  {safePage}
+                </span>
+                <span className="px-1 text-[10.5px] text-[#64748B]">/ {totalPages}</span>
+                <button
+                  type="button"
+                  disabled={safePage >= totalPages}
+                  onClick={() => setPage(safePage + 1)}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#CBD5E1] bg-white text-[#64748B] disabled:opacity-40"
+                >
+                  <ChevronRight size={13} />
+                </button>
+              </div>
+            </div>
+          </section>
 
-            {isEmpty && (
-              <div className="mt-6 flex items-center gap-2 rounded-lg border border-[#A8DFFF] bg-[#F0FAFF] px-3 py-2.5 text-[10px] text-[#2373A8]">
-                <FileText size={14} />
-
+          {/* BOTTOM ACTION BAR */}
+          {activeTab === 'active' && (
+            <section className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-xs">
+              <div className="flex max-w-[380px] items-start gap-2 text-[11px] text-[#475569]">
+                <CheckCircle2
+                  size={16}
+                  className={`mt-0.5 shrink-0 ${targets.ajukan.length > 0 ? 'text-[#137333]' : 'text-[#94A3B8]'}`}
+                />
                 <span>
-                  Lengkapi sembilan data sesuai kolom dokumen
-                  Berita Acara Yudisium resmi.
+                  {targets.ajukan.length > 0
+                    ? `${targets.ajukan.length} mahasiswa ${selectedProdi?.kode || ''} lolos checklist akhir dan siap diajukan ke Kaprodi.`
+                    : `${countLengkap}/${prodiStudents.length} mahasiswa atribut lengkap. Belum ada yang siap diajukan.`}
                 </span>
               </div>
-            )}
-
-            {/* =================================================
-                FORM
-            ================================================= */}
-
-            <div className="mt-7 grid grid-cols-4 gap-x-3 gap-y-5">
-              <BAField
-                label="IPK"
-                value={getValue('ipk')}
-                placeholder="Contoh: 3,70"
-                disabled={isView}
-                onChange={(value) =>
-                  onChange('ipk', value)
-                }
-              />
-
-              <BAField
-                label="Nilai D"
-                value={getValue('nilaiD')}
-                placeholder="Contoh: 10"
-                suffix="%"
-                disabled={isView}
-                onChange={(value) =>
-                  onChange('nilaiD', value)
-                }
-              />
-
-              <BAField
-                label="SKS yang Ditempuh"
-                value={getValue('sks')}
-                placeholder="Contoh: 144"
-                disabled={isView}
-                onChange={(value) =>
-                  onChange('sks', value)
-                }
-              />
-
-              <BAField
-                label="Jumlah Similarity Index"
-                value={getValue('similarity')}
-                placeholder="Contoh: 14"
-                suffix="%"
-                disabled={isView}
-                onChange={(value) =>
-                  onChange('similarity', value)
-                }
-              />
-
-              <BAField
-                label="Skor Kemampuan Bahasa Inggris"
-                value={getValue('english')}
-                placeholder="Contoh: TEVocS: 70"
-                disabled={isView}
-                onChange={(value) =>
-                  onChange('english', value)
-                }
-              />
-
-              <BAField
-                label="Judul PA Disetujui/Tidak"
-                value={getValue('judulPA')}
-                placeholder="Contoh: Disetujui"
-                disabled={isView}
-                onChange={(value) =>
-                  onChange('judulPA', value)
-                }
-              />
-
-              <div className="col-span-4">
-                <BAField
-                  label="Sertifikat Kegiatan/Kepanitiaan/Kompetisi Level (Internasional/Nasional/Regional/Lokal)"
-                  value={getValue(
-                    'sertifikatKegiatan'
-                  )}
-                  placeholder="Contoh: Kepanitiaan Universitas PORSENIGAMA 2023"
-                  disabled={isView}
-                  onChange={(value) =>
-                    onChange(
-                      'sertifikatKegiatan',
-                      value
-                    )
-                  }
-                />
-              </div>
-
-              <div className="col-span-4">
-                <BAField
-                  label="Sertifikat Kompetensi"
-                  value={getValue(
-                    'sertifikatKompetensi'
-                  )}
-                  placeholder="Contoh: BNSP Associate Data Scientist 2025"
-                  disabled={isView}
-                  onChange={(value) =>
-                    onChange(
-                      'sertifikatKompetensi',
-                      value
-                    )
-                  }
-                />
-              </div>
-
-              <div className="col-span-4">
-                <BAField
-                  label="Status Pemeriksaan/Hukuman/Pelanggaran Etik"
-                  value={getValue(
-                    'statusPemeriksaan'
-                  )}
-                  placeholder="Contoh: -"
-                  disabled={isView}
-                  onChange={(value) =>
-                    onChange(
-                      'statusPemeriksaan',
-                      value
-                    )
-                  }
-                />
-              </div>
-            </div>
-
-            {/* =================================================
-                FOOTER MODAL
-            ================================================= */}
-
-            {!isView && (
-              <div className="mt-7 flex justify-end gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 <button
                   type="button"
-                  onClick={onClose}
-                  className="h-10 rounded-xl border border-[#CBD7E4] bg-white px-5 text-[11px] font-bold text-[#174A7C]"
+                  disabled={targets.send.length === 0}
+                  onClick={() => setConfirm('send')}
+                  className={outlineBtn}
                 >
-                  Batal
+                  <Send size={13} /> Kirim Draft ke Mahasiswa ({targets.send.length})
                 </button>
-
                 <button
                   type="button"
-                  onClick={onSave}
-                  className="flex h-10 items-center gap-2 rounded-xl bg-[#06447B] px-5 text-[11px] font-bold text-white shadow-sm"
+                  disabled={targets.checklist.length === 0}
+                  onClick={() => setConfirm('checklist')}
+                  className={outlineBtn}
                 >
-                  <CheckCircle2 size={15} />
-                  Simpan Data
+                  <ListChecks size={13} /> Checklist Akhir ({targets.checklist.length})
+                </button>
+                <button
+                  type="button"
+                  disabled={targets.ajukan.length === 0}
+                  onClick={() => setConfirm('ajukan')}
+                  className="flex h-[36px] items-center gap-2 rounded-xl bg-[#0A477F] px-5 text-[10.5px] font-bold text-white transition hover:bg-[#083866] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Ajukan ke Kaprodi ({targets.ajukan.length}) <ArrowRight size={13} />
                 </button>
               </div>
-            )}
-          </section>
+            </section>
+          )}
         </div>
-      </div>
-    </div>
-  )
-}
+      </main>
 
-/* =========================================================
-   BERITA ACARA FIELD
-========================================================= */
-
-function BAField({
-  label,
-  value,
-  placeholder,
-  suffix,
-  disabled,
-  onChange,
-}) {
-  return (
-    <div>
-      <label className="mb-1.5 block text-[10px] font-bold text-[#3F4B5C]">
-        {label}
-      </label>
-
-      <div className="relative">
-        <input
-          type="text"
-          value={value}
-          placeholder={placeholder}
-          disabled={disabled}
-          onChange={(event) =>
-            onChange(event.target.value)
-          }
-          className={`h-10 w-full rounded-xl border border-[#CBD8E5] px-3 text-[11px] text-[#273348] outline-none ${
-            disabled
-              ? 'bg-white'
-              : 'bg-white focus:border-[#4B7CA7]'
-          } ${suffix ? 'pr-10' : ''}`}
+      {confirm === 'send' && (
+        <ConfirmActionModal
+          icon={Send}
+          tone="amber"
+          title="Kirim Draf Data ke Mahasiswa?"
+          description="Sistem mengirim email konfirmasi ke mahasiswa berikut agar memeriksa kebenaran data penilaiannya."
+          rows={targets.send}
+          confirmLabel="Ya, Kirim Sekarang"
+          busy={busy}
+          onClose={() => setConfirm(null)}
+          onConfirm={handleBulkSend}
         />
-
-        {suffix && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] text-[#738196]">
-            {suffix}
-          </span>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// =========================================================
-// PROFILE
-// =========================================================
-
-function ProfileAvatar({ photo, size = 'normal' }) {
-  const large = size === 'large'
-
-  return photo ? (
-    <img
-      src={photo}
-      alt="Foto profil"
-      className={`rounded-full border-4 border-[#EEF2F6] object-cover ${
-        large ? 'h-20 w-20' : 'h-9 w-9'
-      }`}
-    />
-  ) : (
-    <div
-      className={`flex items-center justify-center rounded-full bg-[#C7CBD1] text-white ${
-        large ? 'h-20 w-20' : 'h-9 w-9'
-      }`}
-    >
-      <UserRound size={large ? 40 : 20} />
-    </div>
-  )
-}
-
-function ProfileDropdown({
-  user,
-  displayName,
-  navigate,
-  handleLogout,
-  setProfileOpen,
-}) {
-  return (
-    <div
-      className="
-        absolute
-        right-0
-        top-[65px]
-        z-50
-        w-[340px]
-        overflow-hidden
-        rounded-2xl
-        border
-        border-[#E1E7EF]
-        bg-white
-        shadow-[0_18px_45px_rgba(0,0,0,0.15)]
-      "
-    >
-      {/* =====================================================
-          PROFILE HEADER
-      ===================================================== */}
-
-      <div
-        className="
-          flex
-          flex-col
-          items-center
-          px-5
-          pt-6
-          pb-5
-        "
-      >
-        {/* FOTO PROFIL */}
-
-        <ProfileAvatar
-          photo={user?.avatar}
-          size="large"
+      )}
+      {confirm === 'checklist' && (
+        <ConfirmActionModal
+          icon={ListChecks}
+          tone="blue"
+          title="Lakukan Checklist Akhir?"
+          description="Mahasiswa berikut sudah mengonfirmasi data. Setelah checklist akhir, mereka siap diajukan ke Berita Acara."
+          rows={targets.checklist}
+          confirmLabel="Ya, Checklist Sekarang"
+          busy={busy}
+          onClose={() => setConfirm(null)}
+          onConfirm={handleBulkChecklist}
         />
-
-        {/* NAMA LENGKAP */}
-
-        <p
-          className="
-            mt-4
-            max-w-[290px]
-            truncate
-            text-center
-            text-[18px]
-            font-extrabold
-            text-[#111827]
-          "
-        >
-          {displayName}
-        </p>
-      </div>
-
-      {/* PEMBATAS */}
-
-      <div className="h-px bg-[#EDF0F4]" />
-
-      {/* =====================================================
-          PROFIL SAYA
-      ===================================================== */}
-
-      <button
-        type="button"
-        onClick={() => {
-          setProfileOpen(false)
-          navigate('/profile')
-        }}
-        className="
-          flex
-          w-full
-          items-center
-          gap-4
-          px-5
-          py-4
-          text-left
-          transition
-          hover:bg-[#F7F9FC]
-        "
-      >
-        <div
-          className="
-            flex
-            h-10
-            w-10
-            shrink-0
-            items-center
-            justify-center
-            rounded-xl
-            bg-[#EEF5FF]
-          "
-        >
-          <UserRound
-            size={20}
-            strokeWidth={1.8}
-            className="text-[#06447B]"
-          />
-        </div>
-
-        <div>
-          <p className="text-[13px] font-bold text-[#172033]">
-            Profil Saya
-          </p>
-
-          <p className="mt-0.5 text-[11px] text-[#7A8493]">
-            Ubah nama dan foto profil
-          </p>
-        </div>
-      </button>
-
-      {/* PEMBATAS */}
-
-      <div className="mx-5 h-px bg-[#EDF0F4]" />
-
-      {/* =====================================================
-          LOGOUT
-      ===================================================== */}
-
-      <button
-        type="button"
-        onClick={handleLogout}
-        className="
-          flex
-          w-full
-          items-center
-          gap-4
-          px-5
-          py-4
-          text-left
-          transition
-          hover:bg-red-50
-        "
-      >
-        <div
-          className="
-            flex
-            h-10
-            w-10
-            shrink-0
-            items-center
-            justify-center
-            rounded-xl
-            bg-[#FFE5E5]
-          "
-        >
-          <LogOut
-            size={20}
-            strokeWidth={2}
-            className="text-[#EF4444]"
-          />
-        </div>
-
-        <div>
-          <p className="text-[13px] font-bold text-red-500">
-            Keluar / Logout
-          </p>
-
-          <p className="mt-0.5 text-[11px] text-red-400">
-            Akhiri sesi akun di perangkat ini
-          </p>
-        </div>
-      </button>
+      )}
+      {confirm === 'ajukan' && (
+        <ConfirmActionModal
+          icon={ArrowRight}
+          tone="green"
+          title={`Ajukan Berita Acara ${selectedProdi?.kode || ''} ke Kaprodi?`}
+          description={`Berita Acara dibuat untuk periode ${effectiveEvent?.nama_event || '-'}${
+            nomorSurat ? `, nomor ${nomorSurat}` : ''
+          }. Mahasiswa di bawah ini akan dimasukkan dan tidak bisa diajukan ulang.`}
+          rows={targets.ajukan}
+          confirmLabel="Ya, Ajukan"
+          busy={busy}
+          onClose={() => setConfirm(null)}
+          onConfirm={handleAjukan}
+        />
+      )}
+      {results && <ResultModal {...results} onClose={() => setResults(null)} />}
+      {preview && (
+        <PreviewModal
+          html={preview.html}
+          loading={preview.loading}
+          error={preview.error}
+          downloading={downloading}
+          onDownload={() => handleDownload(preview.baId)}
+          onClose={() => setPreview(null)}
+        />
+      )}
     </div>
   )
 }
-
-/* =========================================================
-   INITIALS
-========================================================= */
-
-function getInitials(name) {
-  return name
-    .split(' ')
-    .slice(0, 2)
-    .map((word) => word[0])
-    .join('')
-    .toUpperCase()
-}
-
-export default BeritaAcara

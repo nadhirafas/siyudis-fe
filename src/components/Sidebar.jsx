@@ -3,6 +3,9 @@ import {
   FileText,
   ShieldCheck,
   BookOpen,
+  Settings,
+  FileSpreadsheet,
+  FileCode,
   Menu,
   X,
 } from 'lucide-react'
@@ -10,57 +13,43 @@ import {
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import ugmLogo from '../assets/ugm-logo.png'
+import { getUser } from '../services/auth'
 
 function Sidebar({ admin = false }) {
   const navigate = useNavigate()
   const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
 
-  const menus = admin
-    ? [
-        {
-          label: 'Dashboard',
-          icon: Home,
-          path: '/admin/dashboard',
-        },
-        {
-          label: 'Pengajuan Yudisium',
-          icon: FileText,
-          path: '/admin/pengajuan-yudisium',
-        },
-        {
-          label: 'Berita Acara',
-          icon: ShieldCheck,
-          path: '/admin/berita-acara',
-        },
-        {
-          label: 'Panduan & Dokumen',
-          icon: BookOpen,
-          path: '/admin/panduan',
-        },
-      ]
-    : [
-        {
-          label: 'Dashboard',
-          icon: Home,
-          path: '/dashboard',
-        },
-        {
-          label: 'Pengajuan Yudisium',
-          icon: FileText,
-          path: '/pengajuan-yudisium',
-        },
-        {
-          label: 'Berita Acara',
-          icon: ShieldCheck,
-          path: '/berita-acara',
-        },
-        {
-          label: 'Panduan & Dokumen',
-          icon: BookOpen,
-          path: '/panduan',
-        },
-      ]
+  const user = getUser()
+  const inSuperArea = location.pathname.startsWith('/super-admin')
+  // Area kerja ditentukan dari URL: /super-admin/* = 7 menu, /admin/* = 4 menu
+  const area = inSuperArea ? 'super' : admin ? 'staf' : 'mahasiswa'
+
+  const buildMenus = (base) => [
+    { label: 'Dashboard', icon: Home, path: `${base}/dashboard` },
+    { label: 'Pengajuan Yudisium', icon: FileText, path: `${base}/pengajuan-yudisium` },
+    { label: 'Berita Acara', icon: ShieldCheck, path: `${base}/berita-acara` },
+    { label: 'Panduan & Dokumen', icon: BookOpen, path: `${base}/panduan` },
+  ]
+
+  const menus =
+    area === 'super'
+      ? [
+          ...buildMenus('/super-admin'),
+          {
+            label: 'Manajemen Role',
+            icon: Settings,
+            path: '/super-admin/management-role',
+            section: 'Pengaturan Super Admin',
+          },
+          { label: 'Form Pengajuan', icon: FileSpreadsheet, path: '/super-admin/form-management' },
+          { label: 'Template Berita Acara', icon: FileCode, path: '/super-admin/template-berita-acara' },
+        ]
+      : area === 'staf'
+      ? buildMenus('/admin')
+      : buildMenus('')
+
+  const roleLabel = area === 'super' ? 'Super Admin' : area === 'staf' ? 'Staf Akademik' : null
 
   const handleNavigate = (path) => {
     navigate(path)
@@ -246,7 +235,8 @@ function Sidebar({ admin = false }) {
               left-0
               top-[140px]
               flex
-              h-[200px]
+              bottom-[84px]
+              overflow-y-auto
               w-[295px]
               flex-col
               gap-[8px]
@@ -261,8 +251,13 @@ function Sidebar({ admin = false }) {
                 location.pathname.startsWith(`${menu.path}/`)
 
               return (
+                <div key={menu.path} className="flex flex-col gap-[8px]">
+                  {menu.section && (
+                    <p className="mt-3 border-t border-white/20 px-3 pt-4 text-[10px] font-bold uppercase tracking-wider text-white/50">
+                      {menu.section}
+                    </p>
+                  )}
                 <button
-                  key={menu.path}
                   type="button"
                   onClick={() => handleNavigate(menu.path)}
                   className={`
@@ -303,9 +298,21 @@ function Sidebar({ admin = false }) {
                     {menu.label}
                   </span>
                 </button>
+                </div>
               )
             })}
           </nav>
+
+          {/* ================================
+              LABEL ROLE AKTIF
+          ================================= */}
+          {roleLabel && (
+            <div className="absolute inset-x-[16px] bottom-[20px] rounded-[12px] bg-white/10 px-4 py-3">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-white/60">Masuk sebagai</p>
+              <p className="truncate text-[13px] font-bold text-white">{roleLabel}</p>
+              <p className="truncate text-[10px] text-white/60">{user?.nama || ''}</p>
+            </div>
+          )}
         </div>
       </aside>
     </>

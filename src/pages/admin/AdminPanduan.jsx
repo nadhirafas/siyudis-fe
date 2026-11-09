@@ -3,10 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import {
-  Home,
   FileText,
-  ShieldCheck,
-  BookOpen,
   UserRound,
   ChevronDown,
   LogOut,
@@ -18,113 +15,11 @@ import {
 
 import { getUser, clearUser } from '../../services/auth'
 
-import ugmLogo from '../../assets/ugm-logo.png'
+import Sidebar from '../../components/Sidebar'
 import persyaratanImage from '../../assets/persyaratan-yudisium.png'
 
 const SIDEBAR_WIDTH = 295
 
-// =========================================================
-// SIDEBAR
-// =========================================================
-
-function AdminSidebar() {
-  const navigate = useNavigate()
-  const location = window.location.pathname
-
-  const menus = [
-    {
-      label: 'Dashboard',
-      icon: Home,
-      path: '/admin/dashboard',
-    },
-    {
-      label: 'Pengajuan Yudisium',
-      icon: FileText,
-      path: '/admin/pengajuan-yudisium',
-    },
-    {
-      label: 'Berita Acara',
-      icon: ShieldCheck,
-      path: '/admin/berita-acara',
-    },
-    {
-      label: 'Panduan & Dokumen',
-      icon: BookOpen,
-      path: '/admin/panduan',
-    },
-  ]
-
-  return (
-    <aside
-      className="fixed left-0 top-0 z-50 h-screen bg-[#063E73] text-white"
-      style={{ width: `${SIDEBAR_WIDTH}px` }}
-    >
-      <div className="px-5 pt-5">
-        {/* Logo + nama SIYUDIS */}
-        <div className="flex h-[52px] items-center gap-3">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center">
-            <img
-              src={ugmLogo}
-              alt="Logo UGM"
-              className="h-12 w-12 object-contain"
-            />
-          </div>
-
-          <div className="min-w-0">
-            <h1 className="text-[16px] font-bold tracking-wide">
-              SIYUDIS
-            </h1>
-
-            <p className="mt-0.5 whitespace-nowrap text-[9px] text-white/75">
-              Departemen Teknik Elektro dan Informatika
-            </p>
-          </div>
-        </div>
-
-        {/* Garis */}
-        <div className="mt-7 h-px bg-white/30" />
-      </div>
-
-      {/* Menu */}
-      <nav className="mt-8 space-y-2 px-4">
-        {menus.map((menu) => {
-          const Icon = menu.icon
-
-          const active =
-            location === menu.path ||
-            location.startsWith(`${menu.path}/`)
-
-          return (
-            <button
-              key={menu.path}
-              type="button"
-              onClick={() => navigate(menu.path)}
-              className={`flex h-[43px] w-full items-center gap-4 rounded-xl px-4 text-left transition ${
-                active
-                  ? 'bg-[#2D628F] text-white shadow-sm'
-                  : 'text-white/65 hover:bg-white/10 hover:text-white'
-              }`}
-            >
-              <Icon
-                size={20}
-                strokeWidth={active ? 2 : 1.8}
-                className={active ? 'text-[#FFD32A]' : ''}
-              />
-
-              <span
-                className={`text-sm ${
-                  active ? 'font-semibold' : ''
-                }`}
-              >
-                {menu.label}
-              </span>
-            </button>
-          )
-        })}
-      </nav>
-    </aside>
-  )
-}
 
 // =========================================================
 // PROFILE AVATAR
@@ -690,7 +585,7 @@ export default function AdminPanduan() {
   return (
     <div className="fixed inset-0 overflow-hidden bg-[#F3F6FA] text-[#111827]">
       {/* SIDEBAR */}
-      <AdminSidebar />
+      <Sidebar admin />
 
       {/* HEADER */}
       <AdminHeader />

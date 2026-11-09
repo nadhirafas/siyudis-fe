@@ -211,10 +211,6 @@ function StudentDashboard() {
 
   const displayName = user?.nama || 'Mahasiswa'
 
-  if (!user) {
-    return null
-  }
-
   const currentStep = getCurrentStep(yudisiumStatus)
 
   const hasSubmitted =

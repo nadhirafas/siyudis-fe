@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { saveUser } from '../../services/auth'
+import { saveUser, roleCategory, DASHBOARD_BY_CATEGORY } from '../../services/auth'
 
 function AuthCallback() {
   const navigate = useNavigate()
@@ -109,80 +109,11 @@ function AuthCallback() {
         // =========================================================
         // 6. TENTUKAN DASHBOARD
         // =========================================================
-        let dashboardPath = '/dashboard'
+        const category = roleCategory(rawRole)
+        let dashboardPath = DASHBOARD_BY_CATEGORY[category] || '/dashboard'
 
-        // ---------------------------------------------------------
-        // MAHASISWA
-        // ---------------------------------------------------------
-        if (role === 'mahasiswa') {
-          dashboardPath = '/dashboard'
-        }
-
-        // ---------------------------------------------------------
-        // STAF AKADEMIK
-        // ---------------------------------------------------------
-        else if (
-          role === 'staf akademik' ||
-          role === 'staff akademik' ||
-          role === 'staf administrasi' ||
-          role === 'staff administrasi' ||
-          role === 'admin'
-        ) {
-          dashboardPath = '/admin/dashboard'
-        }
-
-        // ---------------------------------------------------------
-        // SUPER ADMIN
-        // Super Admin tetap masuk ke area admin/staf.
-        // Bukan /super-admin/dashboard.
-        // ---------------------------------------------------------
-        else if (
-          role === 'super admin' ||
-          role === 'super_admin' ||
-          role === 'superadmin'
-        ) {
-          dashboardPath = '/admin/dashboard'
-        }
-
-        // ---------------------------------------------------------
-        // KAPRODI
-        // ---------------------------------------------------------
-        else if (
-          role === 'kaprodi' ||
-          role === 'kepala program studi' ||
-          role === 'kepala_prodi'
-        ) {
-          dashboardPath = '/kepala-prodi/dashboard'
-        }
-
-        // ---------------------------------------------------------
-        // MANIT
-        // ---------------------------------------------------------
-        else if (role === 'manit') {
-          dashboardPath = '/management/dashboard'
-        }
-
-        // ---------------------------------------------------------
-        // KADEP
-        // ---------------------------------------------------------
-        else if (
-          role === 'kadep' ||
-          role === 'kepala departemen' ||
-          role === 'kepala_departemen'
-        ) {
-          dashboardPath = '/management/dashboard'
-        }
-
-        // ---------------------------------------------------------
-        // FALLBACK
-        // ---------------------------------------------------------
-        else {
-          console.warn(
-            'Role tidak dikenali:',
-            rawRole
-          )
-
-          dashboardPath = '/dashboard'
+        if (!category) {
+          console.warn('Role tidak dikenali:', rawRole)
         }
 
         console.log(

@@ -1,33 +1,85 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useAreaNavigate } from '../../components/useAreaNavigate'
 import {
   ChevronDown,
   UserRound,
   LogOut,
   FileText,
   Clock3,
-  CheckCircle2,
   ShieldCheck,
-  BookOpen,
   ClipboardList,
   ArrowRight,
 } from 'lucide-react'
 
 import Sidebar from '../../components/Sidebar'
-import { getUser, clearUser } from '../../services/auth'
+import { getUser, logout } from '../../services/auth'
+import { errorMessage } from '../../services/api'
+import { listPengajuanStaf, listProgramStudi } from '../../services/adminApi'
+import { normalizePengajuan, normalizeProdi } from '../../services/normalize'
+
+const VERIFY_STATUSES = ['submitted', 'checking_akademik', 'student_revision_requested']
+
+function computeStats(items, prodis) {
+  const count = (list, statuses) => list.filter((p) => statuses.includes(p.status)).length
+  const summarize = (list) => ({
+    total: list.length,
+    verify: count(list, VERIFY_STATUSES),
+    waiting: count(list, ['waiting_student_confirmation']),
+    confirmed: count(list, ['confirmed_by_student']),
+    final: count(list, ['final_checked_akademik']),
+    inBA: list.filter((p) => p.beritaAcaraId).length,
+  })
+
+  const byProdi = new Map()
+  prodis.forEach((p) => byProdi.set(String(p.id), { name: p.kode || p.nama, list: [] }))
+  items.forEach((p) => {
+    const key = String(p.prodiId ?? p.prodiKode)
+    if (!byProdi.has(key)) byProdi.set(key, { name: p.prodiKode, list: [] })
+    byProdi.get(key).list.push(p)
+  })
+
+  return {
+    all: summarize(items),
+    prodi: [...byProdi.values()]
+      .filter((g) => g.list.length > 0)
+      .map((g) => ({ name: g.name, ...summarize(g.list) })),
+  }
+}
 
 function AdminDashboard() {
-  const navigate = useNavigate()
+  const navigate = useAreaNavigate()
 
   const [user] = useState(() => getUser())
   const [profileOpen, setProfileOpen] = useState(false)
 
-  const [hasSubmission] = useState(true)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [stats, setStats] = useState(null)
 
-  const displayName = user?.nama || 'Aji Pangestu'
+  const displayName = user?.nama || 'Staf Akademik'
 
-  const handleLogout = () => {
-    clearUser()
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([listPengajuanStaf(), listProgramStudi().catch(() => [])])
+      .then(([pengajuan, prodis]) => {
+        if (cancelled) return
+        setStats(computeStats(pengajuan.map(normalizePengajuan), prodis.map(normalizeProdi)))
+      })
+      .catch((err) => {
+        if (!cancelled) setError(errorMessage(err, 'Gagal memuat ringkasan pengajuan'))
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const hasSubmission = Boolean(stats && stats.all.total > 0)
+
+  const handleLogout = async () => {
+    await logout()
     setProfileOpen(false)
     navigate('/')
   }
@@ -106,8 +158,18 @@ function AdminDashboard() {
             </div>
           </section>
 
-          {hasSubmission ? (
-            <ActiveDashboard navigate={navigate} />
+          {error && (
+            <div className="mt-6 rounded-xl border border-rose-200 bg-rose-50 px-5 py-3 text-[13px] text-rose-700">
+              {error}
+            </div>
+          )}
+
+          {loading ? (
+            <div className="mt-6 flex min-h-[200px] items-center justify-center rounded-2xl bg-white text-[13px] text-[#687588] shadow-[0_5px_15px_rgba(0,0,0,0.06)]">
+              Memuat ringkasan pengajuan...
+            </div>
+          ) : hasSubmission ? (
+            <ActiveDashboard navigate={navigate} stats={stats} />
           ) : (
             <EmptyDashboard navigate={navigate} />
           )}
@@ -121,7 +183,10 @@ function AdminDashboard() {
    ACTIVE DASHBOARD
 ========================================================= */
 
-function ActiveDashboard({ navigate }) {
+function ActiveDashboard({ navigate, stats }) {
+  const { all, prodi } = stats
+  const inQueue = all.verify + all.waiting + all.confirmed
+
   return (
     <>
       {/* RINGKASAN ANTREAN */}
@@ -141,67 +206,47 @@ function ActiveDashboard({ navigate }) {
         <div className="mt-3 grid grid-cols-1 gap-4 xl:grid-cols-3">
           <SummaryCard
             type="warning"
-            badge="14 BERKAS MASUK"
-            title="Perlu Verifikasi 22 Dokumen"
-            description="14 pengajuan mahasiswa menunggu verifikasi kelengkapan dokumen persyaratan."
+            badge={`${all.verify} BERKAS MASUK`}
+            title={`Perlu Verifikasi ${all.verify} Pengajuan`}
+            description={`${all.verify} pengajuan mahasiswa menunggu pemeriksaan dokumen dan input data penilaian.`}
           />
 
           <SummaryCard
             type="orange"
-            badge="3 DRAFT BERITA ACARA"
-            title="Konfirmasi Kolektif 9 Atribut"
-            description="Draft Berita Acara per prodi menunggu respon seluruh mahasiswa prodi tersebut."
+            badge={`${all.waiting} MENUNGGU KONFIRMASI`}
+            title={`Konfirmasi Data ${all.waiting + all.confirmed} Mahasiswa`}
+            description={`${all.waiting} mahasiswa belum merespons email konfirmasi, ${all.confirmed} sudah mengonfirmasi dan menunggu checklist akhir.`}
           />
 
           <SummaryCard
             type="success"
-            badge="1 BERITA ACARA SIAP KAPRODI"
-            title="BA Lengkap & Siap Diajukan"
-            description="Seluruh mahasiswa prodi terkonfirmasi lengkap. Siap checklist & pengesahan Kaprodi."
+            badge={`${all.final} SIAP BERITA ACARA`}
+            title="Lolos Checklist Akhir"
+            description={`${all.final} mahasiswa sudah final dicek dan siap diajukan ke Kaprodi. ${all.inBA} mahasiswa sudah masuk Berita Acara.`}
           />
         </div>
 
         {/* PROGRAM STUDY */}
-        <div className="mt-5 grid grid-cols-1 gap-3 rounded-xl bg-[#F8FAFC] p-3 md:grid-cols-2 xl:grid-cols-4">
-          <ProgramCard
-            name="TRPL"
-            total="10 Pengajuan"
-            verify="5"
-            waiting="2"
-            finish="3"
-          />
-
-          <ProgramCard
-            name="TRI"
-            total="7 Pengajuan"
-            verify="4"
-            waiting="1"
-            finish="2"
-          />
-
-          <ProgramCard
-            name="TRE"
-            total="6 Pengajuan"
-            verify="3"
-            waiting="1"
-            finish="2"
-          />
-
-          <ProgramCard
-            name="TRIK"
-            total="5 Pengajuan"
-            verify="2"
-            waiting="2"
-            finish="1"
-          />
-        </div>
+        {prodi.length > 0 && (
+          <div className="mt-5 grid grid-cols-1 gap-3 rounded-xl bg-[#F8FAFC] p-3 md:grid-cols-2 xl:grid-cols-4">
+            {prodi.map((p) => (
+              <ProgramCard
+                key={p.name}
+                name={p.name}
+                total={`${p.total} Pengajuan`}
+                verify={String(p.verify)}
+                waiting={String(p.waiting + p.confirmed)}
+                finish={String(p.final)}
+              />
+            ))}
+          </div>
+        )}
 
         {/* FOOTER SUMMARY */}
         <div className="mt-4 flex flex-col gap-4 px-2 pb-1 xl:flex-row xl:items-center xl:justify-between">
           <p className="text-[12px] leading-5 text-[#687588]">
-            Total 28 berkas mahasiswa: 14 verifikasi berkas,
-            14 terkumpul dalam 4 Draft Berita Acara Prodi
-            (8 mahasiswa siap, 6 mahasiswa menunggu konfirmasi).
+            Total {all.total} berkas mahasiswa: {all.verify} menunggu verifikasi, {all.waiting + all.confirmed} dalam
+            tahap konfirmasi mahasiswa, {all.final} lolos checklist akhir.
           </p>
 
           <button
@@ -220,10 +265,10 @@ function ActiveDashboard({ navigate }) {
         <StatusCard
           title="STATUS PENGAJUAN"
           icon={<Clock3 size={19} />}
-          value="14 Berkas Menunggu"
-          badge="Pengecekan Berkas"
-          badgeType="warning"
-          description="14 mahasiswa menunggu verifikasi berkas pengajuan yudisium"
+          value={`${all.verify} Berkas Menunggu`}
+          badge={all.verify > 0 ? 'Pengecekan Berkas' : 'Tidak Ada Antrean'}
+          badgeType={all.verify > 0 ? 'warning' : 'neutral'}
+          description={`${all.verify} mahasiswa menunggu verifikasi berkas pengajuan yudisium (${inQueue} pengajuan aktif seluruhnya)`}
           action="Periksa Antrean"
           onClick={() => navigate('/admin/pengajuan-yudisium')}
         />
@@ -231,10 +276,16 @@ function ActiveDashboard({ navigate }) {
         <StatusCard
           title="STATUS BERITA ACARA"
           icon={<FileText size={19} />}
-          value="1 Siap, 3 Menunggu"
-          badge="Belum Diterbitkan"
+          value={`${all.final} Siap, ${all.waiting} Menunggu`}
+          badge={all.inBA > 0 ? 'Sudah Diajukan' : 'Belum Diterbitkan'}
           badgeType="neutral"
-          description="Belum ada draft Berita Acara yang dibuat."
+          description={
+            all.final > 0
+              ? `${all.final} mahasiswa siap dimasukkan ke Berita Acara.`
+              : 'Belum ada mahasiswa yang siap dimasukkan ke Berita Acara.'
+          }
+          action="Kelola Berita Acara"
+          onClick={() => navigate('/admin/berita-acara')}
         />
       </section>
 
