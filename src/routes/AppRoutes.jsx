@@ -9,6 +9,7 @@ import FormPengajuanPage from '../pages/yudisium/FormPengajuanPage'
 import PanduanDokumenPage from '../pages/panduan/PanduanDokumenPage'
 import TrackingPengajuanPage from '../pages/yudisium/TrackingPengajuanPage'
 import FormEditPengajuanPage from '../pages/yudisium/FormEditPengajuanPage'
+import BeritaAcaraPage from '../pages/yudisium/BeritaAcaraPage'
 
 
 function AppRoutes() {
@@ -22,6 +23,7 @@ function AppRoutes() {
       <Route path="/panduan" element={<PanduanDokumenPage />} />
       <Route path="/pelacakan-yudisium" element={<TrackingPengajuanPage />} />
       <Route path="/pengajuan-yudisium/edit" element={<FormEditPengajuanPage />} />
+      <Route path="/berita-acara" element={<BeritaAcaraPage />} />
 
     </Routes>
   )
