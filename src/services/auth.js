@@ -136,3 +136,10 @@ export const DASHBOARD_BY_CATEGORY = {
   manit: '/management/dashboard',
   kadep: '/management/dashboard',
 }
+
+export function updateUser(updatedUserData) {
+  const currentUser = getUser() || {}
+  const newUser = { ...currentUser, ...updatedUserData }
+  localStorage.setItem('user', JSON.stringify(newUser))
+  return newUser
+}
