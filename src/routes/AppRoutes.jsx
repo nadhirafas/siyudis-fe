@@ -28,6 +28,8 @@ import ApproverPanduanPage from '../pages/approver/ApproverPanduanPage'
 import ApproverProfilePage from '../pages/approver/ApproverProfilePage'
 
 import KaprodiBeritaAcaraPage from '../pages/kaprodi/KaprodiBeritaAcaraPage'
+import KadepBeritaAcaraPage from '../pages/kadep/KadepBeritaAcaraPage'
+import ManitBeritaAcaraPage from '../pages/manit/ManitBeritaAcaraPage'
 
 function AppRoutes() {
   return (
@@ -53,13 +55,13 @@ function AppRoutes() {
 
       {/* Manit Routes */}
       <Route path="/manit/dashboard" element={<ApproverDashboardPage />} />
-      <Route path="/manit/berita-acara" element={<ApproverDashboardPage />} />
+      <Route path="/manit/berita-acara" element={<ManitBeritaAcaraPage />} />
       <Route path="/manit/panduan" element={<ApproverPanduanPage />} />
       <Route path="/manit/profile" element={<ApproverProfilePage />} />
 
       {/* Kadep Routes */}
       <Route path="/kadep/dashboard" element={<ApproverDashboardPage />} />
-      <Route path="/kadep/berita-acara" element={<ApproverDashboardPage />} />
+      <Route path="/kadep/berita-acara" element={<KadepBeritaAcaraPage />} />
       <Route path="/kadep/panduan" element={<ApproverPanduanPage />} />
       <Route path="/kadep/profile" element={<ApproverProfilePage />} />
 
