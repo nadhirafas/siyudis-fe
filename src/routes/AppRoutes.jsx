@@ -27,6 +27,8 @@ import ApproverDashboardPage from '../pages/approver/ApproverDashboardPage'
 import ApproverPanduanPage from '../pages/approver/ApproverPanduanPage'
 import ApproverProfilePage from '../pages/approver/ApproverProfilePage'
 
+import KaprodiBeritaAcaraPage from '../pages/kaprodi/KaprodiBeritaAcaraPage'
+
 function AppRoutes() {
   return (
     <Routes>
@@ -45,7 +47,7 @@ function AppRoutes() {
 
       {/* Kaprodi Routes */}
       <Route path="/kaprodi/dashboard" element={<ApproverDashboardPage />} />
-      <Route path="/kaprodi/berita-acara" element={<ApproverDashboardPage />} />
+      <Route path="/kaprodi/berita-acara" element={<KaprodiBeritaAcaraPage />} />
       <Route path="/kaprodi/panduan" element={<ApproverPanduanPage />} />
       <Route path="/kaprodi/profile" element={<ApproverProfilePage />} />
 
