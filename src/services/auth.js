@@ -26,7 +26,7 @@ export async function loginWithGoogle() {
 }
 
 // =========================================================
-// USER
+// USER & TOKEN (sessionStorage)
 // =========================================================
 export function saveUser(user) {
   sessionStorage.setItem('siyudis_user', JSON.stringify(user))
@@ -62,6 +62,13 @@ export function clearToken() {
   sessionStorage.removeItem('siyudis_token')
 }
 
+export function updateUser(updatedUserData) {
+  const currentUser = getUser() || {}
+  const newUser = { ...currentUser, ...updatedUserData }
+  saveUser(newUser)
+  return newUser
+}
+
 // =========================================================
 // ROLE HELPERS
 // =========================================================
@@ -72,17 +79,58 @@ export function getRoleName(user) {
   return r?.name || r?.nama || r?.nama_role || user.role_name || ''
 }
 
-function normalizeRole(user) {
-  return getRoleName(user).toLowerCase().replace(/[_-]/g, ' ').trim()
+// Kategori role dari nama role di database. Toleran terhadap variasi penulisan:
+// "staf_akademik", "Staf Akademik", "staff-akademik", "super_admin", dst.
+export function roleCategory(name = '') {
+  const r = String(name).toLowerCase().replace(/[_-]+/g, ' ').trim()
+  if (!r) return null
+  if (r.includes('super')) return 'super_admin'
+  if (r.includes('staf') || r.includes('staff') || r === 'admin') return 'staf_akademik'
+  if (r.includes('kaprodi') || r.includes('kepala program studi') || r.includes('kepala prodi')) return 'kaprodi'
+  if (r.includes('manit')) return 'manit'
+  if (r.includes('kadep') || r.includes('kepala departemen')) return 'kadep'
+  if (r.includes('mahasiswa')) return 'mahasiswa'
+  return null
+}
+
+export const DASHBOARD_BY_CATEGORY = {
+  mahasiswa: '/dashboard',
+  staf_akademik: '/admin/dashboard',
+  super_admin: '/super-admin/dashboard',
+  kaprodi: '/kaprodi/dashboard',
+  manit: '/manit/dashboard',
+  kadep: '/kadep/dashboard',
+}
+
+export function getUserCategory(user) {
+  return roleCategory(getRoleName(user))
 }
 
 export function isSuperAdmin(user) {
-  return normalizeRole(user).includes('super')
+  return getUserCategory(user) === 'super_admin'
 }
 
 export function isStafAkademik(user) {
-  const r = normalizeRole(user)
-  return r.includes('staf') || r.includes('staff') || r === 'admin' || r.includes('super')
+  const cat = getUserCategory(user)
+  return cat === 'staf_akademik' || cat === 'super_admin'
+}
+
+export function isKaprodi(user) {
+  return getUserCategory(user) === 'kaprodi'
+}
+
+export function isKadep(user) {
+  return getUserCategory(user) === 'kadep'
+}
+
+export function isManit(user) {
+  return getUserCategory(user) === 'manit'
+}
+
+// Halaman awal setelah login, sesuai area kerja role
+export function homePathFor(user) {
+  const cat = getUserCategory(user)
+  return (cat && DASHBOARD_BY_CATEGORY[cat]) || '/dashboard'
 }
 
 // =========================================================
@@ -103,43 +151,4 @@ export async function logout() {
     clearToken()
     clearUser()
   }
-}
-
-
-// Halaman awal setelah login, sesuai area kerja role
-export function homePathFor(user) {
-  if (isSuperAdmin(user)) return '/super-admin/dashboard'
-  if (isStafAkademik(user)) return '/admin/dashboard'
-  return '/dashboard'
-}
-
-
-// Kategori role dari nama role di database. Toleran terhadap variasi penulisan:
-// "staf_akademik", "Staf Akademik", "staff-akademik", "super_admin", dst.
-export function roleCategory(name = '') {
-  const r = String(name).toLowerCase().replace(/[_-]+/g, ' ').trim()
-  if (!r) return null
-  if (r.includes('super')) return 'super_admin'
-  if (r.includes('staf') || r.includes('staff') || r === 'admin') return 'staf_akademik'
-  if (r.includes('kaprodi') || r.includes('kepala program studi') || r.includes('kepala prodi')) return 'kaprodi'
-  if (r.includes('manit')) return 'manit'
-  if (r.includes('kadep') || r.includes('kepala departemen')) return 'kadep'
-  if (r.includes('mahasiswa')) return 'mahasiswa'
-  return null
-}
-
-export const DASHBOARD_BY_CATEGORY = {
-  mahasiswa: '/dashboard',
-  staf_akademik: '/admin/dashboard',
-  super_admin: '/super-admin/dashboard',
-  kaprodi: '/kepala-prodi/dashboard',
-  manit: '/management/dashboard',
-  kadep: '/management/dashboard',
-}
-
-export function updateUser(updatedUserData) {
-  const currentUser = getUser() || {}
-  const newUser = { ...currentUser, ...updatedUserData }
-  localStorage.setItem('user', JSON.stringify(newUser))
-  return newUser
 }

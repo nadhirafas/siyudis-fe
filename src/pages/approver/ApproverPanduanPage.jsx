@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Home,
   ShieldCheck,
@@ -16,11 +16,23 @@ import {
   FileText
 } from 'lucide-react'
 
-import { getUser, clearUser } from '../../services/auth'
+import { getUser, saveUser, logout } from '../../services/auth'
+import { getMyProfile } from '../../services/approverService'
 import ugmLogo from '../../assets/ugm-logo.png'
 import persyaratanImage from '../../assets/persyaratan-yudisium.png'
 
-function Sidebar({ isOpen, onClose }) {
+function resolveRolePrefix(pathname, user) {
+  if (pathname.startsWith('/kadep')) return 'kadep'
+  if (pathname.startsWith('/manit')) return 'manit'
+  if (pathname.startsWith('/kaprodi')) return 'kaprodi'
+
+  const role = String(user?.role || '').toLowerCase()
+  if (role === 'kadep' || role === 'kepala_departemen') return 'kadep'
+  if (role === 'manit') return 'manit'
+  return 'kaprodi'
+}
+
+function Sidebar({ isOpen, onClose, rolePrefix }) {
   const navigate = useNavigate()
 
   return (
@@ -67,7 +79,7 @@ function Sidebar({ isOpen, onClose }) {
             type="button"
             onClick={() => {
               onClose()
-              navigate('/kaprodi/dashboard')
+              navigate(`/${rolePrefix}/dashboard`)
             }}
             className="flex h-[43px] w-full items-center gap-4 rounded-xl px-4 text-left text-white/65 transition hover:bg-white/10 hover:text-white"
           >
@@ -79,7 +91,7 @@ function Sidebar({ isOpen, onClose }) {
             type="button"
             onClick={() => {
               onClose()
-              navigate('/kaprodi/berita-acara')
+              navigate(`/${rolePrefix}/berita-acara`)
             }}
             className="flex h-[43px] w-full items-center gap-4 rounded-xl px-4 text-left text-white/65 transition hover:bg-white/10 hover:text-white"
           >
@@ -100,14 +112,31 @@ function Sidebar({ isOpen, onClose }) {
   )
 }
 
-function Header({ onOpenSidebar }) {
+function Header({ onOpenSidebar, user, rolePrefix }) {
   const navigate = useNavigate()
-  const [user] = useState(() => getUser() || { name: 'Kaprodi TRPL', email: 'trpl_kaprodi@mail.ugm.ac.id', photo: null })
   const [profileOpen, setProfileOpen] = useState(false)
 
-  const handleLogout = () => {
-    clearUser()
+  const fallbackName =
+    rolePrefix === 'kadep'
+      ? 'Kadep TEDI'
+      : rolePrefix === 'manit'
+      ? 'Manit TEDI'
+      : 'Kaprodi TRPL'
+
+  const fallbackEmail =
+    rolePrefix === 'kadep'
+      ? 'kadep_tedi@mail.ugm.ac.id'
+      : rolePrefix === 'manit'
+      ? 'manit_tedi@mail.ugm.ac.id'
+      : 'trpl_kaprodi@mail.ugm.ac.id'
+
+  const displayName = user?.name || fallbackName
+  const displayEmail = user?.email || fallbackEmail
+  const displayPhoto = user?.avatar || user?.photo || null
+
+  const handleLogout = async () => {
     setProfileOpen(false)
+    await logout()
     navigate('/')
   }
 
@@ -129,7 +158,9 @@ function Header({ onOpenSidebar }) {
           <Menu size={24} />
         </button>
         <div>
-          <h1 className="text-xl lg:text-[28px] font-bold leading-tight text-gray-950">Panduan &amp; Dokumen</h1>
+          <h1 className="text-xl lg:text-[28px] font-bold leading-tight text-gray-950">
+            Panduan &amp; Dokumen
+          </h1>
           <p className="hidden sm:block mt-0.5 text-xs lg:text-sm text-gray-500">
             Sistem Informasi Yudisium Terpadu DTEDI SV UGM
           </p>
@@ -142,29 +173,29 @@ function Header({ onOpenSidebar }) {
           onClick={() => setProfileOpen((open) => !open)}
           className="flex items-center gap-2.5 rounded-full py-1 px-1.5 hover:bg-gray-50 transition"
         >
-          {user?.photo ? (
-            <img src={user.photo} alt="" className="h-9 w-9 lg:h-10 lg:w-10 rounded-full object-cover" />
+          {displayPhoto ? (
+            <img src={displayPhoto} alt="" className="h-9 w-9 lg:h-10 lg:w-10 rounded-full object-cover" />
           ) : (
             <div className="h-9 w-9 lg:h-10 lg:w-10 shrink-0">
               <DefaultAvatarIcon />
             </div>
           )}
           <span className="hidden sm:inline-block text-xs lg:text-[15px] font-bold text-gray-900 tracking-tight">
-            {user?.name || 'Kaprodi TRPL'}
+            {displayName}
           </span>
         </button>
 
         {profileOpen && (
           <div className="absolute right-0 top-[58px] w-[300px] sm:w-[380px] overflow-hidden rounded-[24px] border border-gray-200/80 bg-white shadow-xl z-50 p-5 sm:p-6">
             <div className="border-b border-gray-100 pb-4">
-              <p className="text-xs font-semibold text-gray-400 text-left">{user.email}</p>
+              <p className="text-xs font-semibold text-gray-400 text-left">{displayEmail}</p>
             </div>
 
             <div className="flex flex-col items-center py-5">
               <div className="relative flex items-center justify-center">
                 <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-full border-[5px] border-[#e8edf5] bg-[#c7cbd1] flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
-                  {user?.photo ? (
-                    <img src={user.photo} alt="" className="h-full w-full object-cover" />
+                  {displayPhoto ? (
+                    <img src={displayPhoto} alt="" className="h-full w-full object-cover" />
                   ) : (
                     <DefaultAvatarIcon />
                   )}
@@ -173,7 +204,7 @@ function Header({ onOpenSidebar }) {
               </div>
 
               <p className="mt-4 text-base sm:text-[18px] font-bold text-gray-900 text-center tracking-tight">
-                {user.name}
+                {displayName}
               </p>
             </div>
 
@@ -182,7 +213,7 @@ function Header({ onOpenSidebar }) {
                 type="button"
                 onClick={() => {
                   setProfileOpen(false)
-                  navigate('/approver/profile')
+                  navigate(`/${rolePrefix}/profile`)
                 }}
                 className="flex w-full items-center gap-4 rounded-xl p-2.5 text-left hover:bg-gray-50 transition"
               >
@@ -199,7 +230,7 @@ function Header({ onOpenSidebar }) {
                 type="button"
                 onClick={() => {
                   setProfileOpen(false)
-                  navigate('/approver/profile')
+                  navigate(`/${rolePrefix}/profile`)
                 }}
                 className="flex w-full items-center gap-4 rounded-xl p-2.5 text-left hover:bg-gray-50 transition"
               >
@@ -236,9 +267,24 @@ function Header({ onOpenSidebar }) {
 }
 
 export default function ApproverPanduanPage() {
+  const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [user, setUser] = useState(() => getUser())
   const [zoom, setZoom] = useState(100)
   const viewerRef = useRef(null)
+
+  const rolePrefix = resolveRolePrefix(location.pathname, user)
+
+  useEffect(() => {
+    getMyProfile()
+      .then((res) => {
+        if (res?.data) {
+          setUser(res.data)
+          saveUser(res.data)
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   const zoomOut = () => setZoom((z) => Math.max(50, z - 10))
   const zoomIn = () => setZoom((z) => Math.min(200, z + 10))
@@ -265,8 +311,16 @@ export default function ApproverPanduanPage() {
 
   return (
     <div className="min-h-screen bg-[#EEF3F8] text-[#111827]">
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <Header onOpenSidebar={() => setSidebarOpen(true)} />
+      <Sidebar
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        rolePrefix={rolePrefix}
+      />
+      <Header
+        onOpenSidebar={() => setSidebarOpen(true)}
+        user={user}
+        rolePrefix={rolePrefix}
+      />
 
       <main className="ml-0 lg:ml-[272px] pt-[88px]">
         <div className="mx-auto max-w-[1090px] px-4 sm:px-7 py-6 sm:py-8">
@@ -275,7 +329,7 @@ export default function ApproverPanduanPage() {
               <div className="flex items-center gap-2">
                 <FileText size={22} className="text-[#063E73] shrink-0" />
                 <h3 className="font-semibold text-gray-900 text-xs sm:text-base">
-                    Petunjuk Penggunaan SIYUDIS
+                  Petunjuk Penggunaan SIYUDIS
                 </h3>
               </div>
 

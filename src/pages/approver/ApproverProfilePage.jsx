@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useRef, useEffect } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Home,
   ShieldCheck,
@@ -16,10 +16,17 @@ import {
   Mail,
   Camera,
   Contact2,
-  Info
+  Info,
+  Loader2
 } from 'lucide-react'
 
-import { getUser, clearUser } from '../../services/auth'
+import { getUser, saveUser, logout, getRoleName, roleCategory } from '../../services/auth'
+import {
+  getMyProfile,
+  updateMyProfile,
+  getMySignature,
+  saveMySignature
+} from '../../services/approverService'
 import ugmLogo from '../../assets/ugm-logo.png'
 
 const SignatureStrokeIcon = ({ size = 22, color = '#9A6B29' }) => (
@@ -44,17 +51,18 @@ const DefaultAvatarCircle = () => (
   </div>
 )
 
+function resolveRolePrefix(user, pathname = '') {
+  const cat = roleCategory(getRoleName(user))
+  if (cat === 'kadep' || cat === 'manit' || cat === 'kaprodi') return cat
+  if (pathname.startsWith('/kadep')) return 'kadep'
+  if (pathname.startsWith('/manit')) return 'manit'
+  return 'kaprodi'
+}
+
 function Sidebar({ isOpen, onClose, user }) {
   const navigate = useNavigate()
-
-  const getRolePrefix = () => {
-    const roleStr = (user?.role || user?.name || '').toLowerCase()
-    if (roleStr.includes('kadep') || roleStr.includes('departemen')) return 'kadep'
-    if (roleStr.includes('manit')) return 'manit'
-    return 'kaprodi'
-  }
-
-  const rolePrefix = getRolePrefix()
+  const { pathname } = useLocation()
+  const rolePrefix = resolveRolePrefix(user, pathname)
 
   return (
     <>
@@ -102,9 +110,9 @@ function Sidebar({ isOpen, onClose, user }) {
               onClose()
               navigate(`/${rolePrefix}/dashboard`)
             }}
-            className="flex h-[43px] w-full items-center gap-4 rounded-xl bg-white/10 px-4 text-left font-semibold text-white transition"
+            className="flex h-[43px] w-full items-center gap-4 rounded-xl px-4 text-left text-white/65 transition hover:bg-white/10 hover:text-white"
           >
-            <Home size={20} strokeWidth={1.8} className="text-[#FACC15]" />
+            <Home size={20} strokeWidth={1.8} />
             <span className="text-sm">Dashboard</span>
           </button>
 
@@ -124,7 +132,7 @@ function Sidebar({ isOpen, onClose, user }) {
             type="button"
             onClick={() => {
               onClose()
-              navigate('/approver/panduan')
+              navigate(`/${rolePrefix}/panduan`)
             }}
             className="flex h-[43px] w-full items-center gap-4 rounded-xl px-4 text-left text-white/65 transition hover:bg-white/10 hover:text-white"
           >
@@ -139,11 +147,14 @@ function Sidebar({ isOpen, onClose, user }) {
 
 function Header({ onOpenSidebar, pageTitle, user }) {
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const [profileOpen, setProfileOpen] = useState(false)
+  const rolePrefix = resolveRolePrefix(user, pathname)
+  const userPhoto = user?.avatar || user?.photo
 
-  const handleLogout = () => {
-    clearUser()
+  const handleLogout = async () => {
     setProfileOpen(false)
+    await logout()
     navigate('/')
   }
 
@@ -171,29 +182,29 @@ function Header({ onOpenSidebar, pageTitle, user }) {
           onClick={() => setProfileOpen((open) => !open)}
           className="flex items-center gap-2.5 rounded-full py-1 px-1.5 hover:bg-gray-50 transition"
         >
-          {user?.photo ? (
-            <img src={user.photo} alt="" className="h-9 w-9 lg:h-10 lg:w-10 rounded-full object-cover" />
+          {userPhoto ? (
+            <img src={userPhoto} alt="" className="h-9 w-9 lg:h-10 lg:w-10 rounded-full object-cover" />
           ) : (
             <div className="h-9 w-9 lg:h-10 lg:w-10 shrink-0">
               <DefaultAvatarCircle />
             </div>
           )}
           <span className="hidden sm:inline-block text-xs lg:text-[15px] font-bold text-gray-900 tracking-tight">
-            {user?.name || 'Kaprodi TRPL'}
+            {user?.name || 'Approver'}
           </span>
         </button>
 
         {profileOpen && (
           <div className="absolute right-0 top-[58px] w-[300px] sm:w-[340px] overflow-hidden rounded-[24px] border border-gray-200/80 bg-white shadow-xl z-50 p-5">
             <div className="border-b border-gray-100 pb-3">
-              <p className="text-xs font-semibold text-gray-500 text-left">{user.email}</p>
+              <p className="text-xs font-semibold text-gray-500 text-left">{user?.email}</p>
             </div>
 
             <div className="flex flex-col items-center py-4 border-b border-gray-100">
               <div className="relative flex items-center justify-center">
                 <div className="h-20 w-20 rounded-full border-[4px] border-[#e8edf5] bg-[#c7cbd1] flex items-center justify-center overflow-hidden shrink-0">
-                  {user?.photo ? (
-                    <img src={user.photo} alt="" className="h-full w-full object-cover" />
+                  {userPhoto ? (
+                    <img src={userPhoto} alt="" className="h-full w-full object-cover" />
                   ) : (
                     <DefaultAvatarCircle />
                   )}
@@ -202,7 +213,7 @@ function Header({ onOpenSidebar, pageTitle, user }) {
               </div>
 
               <p className="mt-3 text-base sm:text-lg font-bold text-gray-900 text-center tracking-tight">
-                {user.name}
+                {user?.name}
               </p>
             </div>
 
@@ -211,7 +222,7 @@ function Header({ onOpenSidebar, pageTitle, user }) {
                 type="button"
                 onClick={() => {
                   setProfileOpen(false)
-                  navigate('/approver/profile')
+                  navigate(`/${rolePrefix}/profile`)
                 }}
                 className="flex w-full items-center gap-3.5 py-3 border-b border-gray-100 text-left hover:bg-gray-50/80 transition rounded-xl px-2"
               >
@@ -228,7 +239,7 @@ function Header({ onOpenSidebar, pageTitle, user }) {
                 type="button"
                 onClick={() => {
                   setProfileOpen(false)
-                  navigate('/approver/profile')
+                  navigate(`/${rolePrefix}/profile`)
                 }}
                 className="flex w-full items-center gap-3.5 py-3 border-b border-gray-100 text-left hover:bg-gray-50/80 transition rounded-xl px-2"
               >
@@ -263,18 +274,24 @@ function Header({ onOpenSidebar, pageTitle, user }) {
 }
 
 export default function ApproverProfilePage() {
+  const { pathname } = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const [user, setUserState] = useState(() => getUser() || {
-    name: 'Kaprodi TRPL',
-    email: 'trpl_kaprodi@mail.ugm.ac.id',
-    role: 'kaprodi',
-    photo: null
+    name: '',
+    email: '',
+    role: resolveRolePrefix(null, pathname),
+    avatar: null
   })
 
-  const [nameInput, setNameInput] = useState(user.name)
-  const [photoPreview, setPhotoPreview] = useState(user.photo)
+  const [nameInput, setNameInput] = useState(user.name || '')
+  const [photoPreview, setPhotoPreview] = useState(user.avatar || user.photo || null)
+  const [photoFile, setPhotoFile] = useState(null)
+  const [photoRemoved, setPhotoRemoved] = useState(false)
+
   const [tteFile, setTteFile] = useState(null)
+  const [savingProfile, setSavingProfile] = useState(false)
+  const [uploadingTte, setUploadingTte] = useState(false)
 
   const [errorMessage, setErrorMessage] = useState(null)
   const [successMessage, setSuccessMessage] = useState(null)
@@ -282,18 +299,59 @@ export default function ApproverProfilePage() {
   const photoInputRef = useRef(null)
   const tteInputRef = useRef(null)
 
-  const getHeaderTitle = () => {
-    const roleStr = (user?.role || user?.name || '').toLowerCase()
-    if (roleStr.includes('kadep') || roleStr.includes('departemen')) {
-      return 'Profile Kepala Departemen'
-    }
-    if (roleStr.includes('manit')) {
-      return 'Profile Manit'
-    }
-    return 'Profile Kepala Program Studi'
-  }
+  const rolePrefix = resolveRolePrefix(user, pathname)
 
-  const headerTitle = getHeaderTitle()
+  const headerTitle =
+    rolePrefix === 'kadep'
+      ? 'Profile Kepala Departemen'
+      : rolePrefix === 'manit'
+      ? 'Profile Manit'
+      : 'Profile Kepala Program Studi'
+
+  // Muat profil terbaru & tanda tangan elektronik dari backend
+  useEffect(() => {
+    let active = true
+
+    async function fetchInitialData() {
+      try {
+        const profileRes = await getMyProfile()
+        if (active && profileRes?.data) {
+          setUserState(profileRes.data)
+          saveUser(profileRes.data)
+          setNameInput(profileRes.data.name || '')
+          setPhotoPreview(profileRes.data.avatar || null)
+        }
+      } catch {
+        // fallback ke data sessionStorage jika offline
+      }
+
+      try {
+        const sigRes = await getMySignature()
+        if (active && sigRes?.data?.file_path) {
+          const url = sigRes.data.file_path
+          const fileName = url.split('/').pop() || 'e-signature.png'
+          setTteFile({
+            name: fileName,
+            url,
+            isServer: true
+          })
+        }
+      } catch (err) {
+        // 404 berarti user memang belum pernah unggah e-signature
+        if (err.status !== 404 && active) {
+          setErrorMessage({
+            title: 'Gagal Memuat Tanda Tangan',
+            desc: err.message
+          })
+        }
+      }
+    }
+
+    fetchInitialData()
+    return () => {
+      active = false
+    }
+  }, [])
 
   // Handler Upload Foto Profile (Hanya PNG/JPG/WebP, Maks 2.0 MB)
   const handlePhotoUpload = (e) => {
@@ -322,6 +380,9 @@ export default function ApproverProfilePage() {
     }
 
     setErrorMessage(null)
+    setPhotoFile(file)
+    setPhotoRemoved(false)
+
     const reader = new FileReader()
     reader.onload = () => {
       setPhotoPreview(reader.result)
@@ -329,8 +390,8 @@ export default function ApproverProfilePage() {
     reader.readAsDataURL(file)
   }
 
-  // Handler Upload TTE (Hanya PNG/JPG, Tolak PDF/Word, Maks 5.0 MB)
-  const handleTteUpload = (e) => {
+  // Handler Upload TTE ke Backend (POST /signature atau PUT /signature/me)
+  const handleTteUpload = async (e) => {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
@@ -356,25 +417,71 @@ export default function ApproverProfilePage() {
     }
 
     setErrorMessage(null)
-    setTteFile({
-      name: fileName,
-      size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-      date: '12 Nov 2026',
-      url: URL.createObjectURL(file)
-    })
+    setUploadingTte(true)
+
+    try {
+      const res = await saveMySignature(file, Boolean(tteFile))
+      const serverUrl = res?.data?.file_path || URL.createObjectURL(file)
+
+      setTteFile({
+        name: fileName,
+        size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+        url: serverUrl,
+        isServer: true
+      })
+
+      setSuccessMessage('Tanda tangan elektronik berhasil disimpan!')
+      setTimeout(() => setSuccessMessage(null), 3000)
+    } catch (err) {
+      setErrorMessage({
+        title: 'Gagal Menyimpan Tanda Tangan',
+        desc: err.message || 'Terjadi kesalahan saat mengunggah e-signature ke server.'
+      })
+    } finally {
+      setUploadingTte(false)
+    }
   }
 
-  const handleSaveProfile = (e) => {
+  const handleSaveProfile = async (e) => {
     e.preventDefault()
-    const updated = {
-      ...user,
-      name: nameInput,
-      photo: photoPreview
+    setErrorMessage(null)
+    setSavingProfile(true)
+
+    try {
+      let res
+      if (photoFile) {
+        const formData = new FormData()
+        formData.append('name', nameInput)
+        formData.append('avatar', photoFile)
+        res = await updateMyProfile(formData)
+      } else {
+        const payload = { name: nameInput }
+        if (photoRemoved) payload.avatar = null
+        res = await updateMyProfile(payload)
+      }
+
+      const updatedUser = res?.data || {
+        ...user,
+        name: nameInput,
+        avatar: photoRemoved ? null : photoPreview
+      }
+
+      saveUser(updatedUser)
+      setUserState(updatedUser)
+      setPhotoFile(null)
+      setPhotoRemoved(false)
+      setPhotoPreview(updatedUser.avatar || null)
+
+      setSuccessMessage('Perubahan profil berhasil disimpan!')
+      setTimeout(() => setSuccessMessage(null), 3000)
+    } catch (err) {
+      setErrorMessage({
+        title: 'Gagal Menyimpan Profil',
+        desc: err.message || 'Terjadi kesalahan saat memperbarui profil.'
+      })
+    } finally {
+      setSavingProfile(false)
     }
-    localStorage.setItem('user', JSON.stringify(updated))
-    setUserState(updated)
-    setSuccessMessage('Perubahan profil berhasil disimpan!')
-    setTimeout(() => setSuccessMessage(null), 3000)
   }
 
   return (
@@ -460,7 +567,11 @@ export default function ApproverProfilePage() {
 
                   <button
                     type="button"
-                    onClick={() => setPhotoPreview(null)}
+                    onClick={() => {
+                      setPhotoPreview(null)
+                      setPhotoFile(null)
+                      setPhotoRemoved(true)
+                    }}
                     className="inline-flex items-center gap-2 rounded-xl bg-[#FDE8E7] border border-[#F5B7B1] px-5 py-2.5 text-xs sm:text-sm font-semibold text-[#991B1B] hover:bg-red-100 transition"
                   >
                     <Trash2 size={16} /> Hapus Foto
@@ -501,6 +612,7 @@ export default function ApproverProfilePage() {
                     type="text"
                     value={nameInput}
                     onChange={(e) => setNameInput(e.target.value)}
+                    required
                     className="w-full rounded-xl border border-slate-200 py-3 pl-10 pr-4 text-xs sm:text-sm font-normal text-gray-900 focus:border-[#142F57] focus:outline-none focus:ring-1 focus:ring-[#142F57]"
                   />
                 </div>
@@ -520,7 +632,7 @@ export default function ApproverProfilePage() {
                   </span>
                   <input
                     type="email"
-                    value={user.email}
+                    value={user?.email || ''}
                     disabled
                     className="w-full rounded-xl border border-slate-200 bg-[#F0F4FA] py-3 pl-10 pr-4 text-xs sm:text-sm font-normal text-[#475569] cursor-not-allowed"
                   />
@@ -533,20 +645,25 @@ export default function ApproverProfilePage() {
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button
                   type="button"
+                  disabled={savingProfile}
                   onClick={() => {
-                    setNameInput(user.name)
-                    setPhotoPreview(user.photo)
+                    setNameInput(user?.name || '')
+                    setPhotoPreview(user?.avatar || null)
+                    setPhotoFile(null)
+                    setPhotoRemoved(false)
                   }}
-                  className="flex h-11 items-center gap-2 rounded-xl bg-[#F0F4FA] px-6 text-xs sm:text-sm font-semibold text-gray-700 hover:bg-slate-200 transition"
+                  className="flex h-11 items-center gap-2 rounded-xl bg-[#F0F4FA] px-6 text-xs sm:text-sm font-semibold text-gray-700 hover:bg-slate-200 transition disabled:opacity-50"
                 >
                   <X size={16} /> Batal
                 </button>
 
                 <button
                   type="submit"
-                  className="flex h-11 items-center gap-2 rounded-xl bg-[#142F57] px-6 text-xs sm:text-sm font-semibold text-white hover:bg-[#0B1E38] transition shadow-2xs"
+                  disabled={savingProfile}
+                  className="flex h-11 items-center gap-2 rounded-xl bg-[#142F57] px-6 text-xs sm:text-sm font-semibold text-white hover:bg-[#0B1E38] transition shadow-2xs disabled:opacity-60"
                 >
-                  <Save size={16} /> Simpan Perubahan
+                  {savingProfile ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                  {savingProfile ? 'Menyimpan...' : 'Simpan Perubahan'}
                 </button>
               </div>
             </form>
@@ -568,22 +685,24 @@ export default function ApproverProfilePage() {
               <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#C2D7EF] bg-[#F4F8FF] p-8 text-center space-y-3">
                 <button
                   type="button"
+                  disabled={uploadingTte}
                   onClick={() => tteInputRef.current?.click()}
-                  className="text-[#142F57] hover:scale-105 transition"
+                  className="text-[#142F57] hover:scale-105 transition disabled:opacity-50"
                 >
-                  <Upload size={32} />
+                  {uploadingTte ? <Loader2 size={32} className="animate-spin" /> : <Upload size={32} />}
                 </button>
                 <h4 className="text-sm font-bold text-gray-900">Belum Ada Tanda Tangan Diunggah</h4>
                 <p className="max-w-md text-xs text-slate-500 font-normal leading-relaxed">
-                  Anda perlu mengunggah tanda tangan sekali saja. Setelah itu, tanda tangan akan diterapkan otomatis setiap kali Anda menyetujui mahasiswa.
+                  Anda perlu mengunggah tanda tangan sekali saja. Setelah itu, tanda tangan akan diterapkan otomatis setiap kali Anda menyetujui Berita Acara.
                 </p>
 
                 <button
                   type="button"
+                  disabled={uploadingTte}
                   onClick={() => tteInputRef.current?.click()}
-                  className="mt-2 inline-flex items-center justify-center rounded-xl bg-[#142F57] px-6 py-2.5 text-xs sm:text-sm font-semibold text-white hover:bg-[#0B1E38] transition shadow-xs"
+                  className="mt-2 inline-flex items-center justify-center gap-2 rounded-xl bg-[#142F57] px-6 py-2.5 text-xs sm:text-sm font-semibold text-white hover:bg-[#0B1E38] transition shadow-xs disabled:opacity-60"
                 >
-                  Unggah Tanda Tangan
+                  {uploadingTte ? 'Mengunggah...' : 'Unggah Tanda Tangan'}
                 </button>
               </div>
             ) : (
@@ -597,25 +716,20 @@ export default function ApproverProfilePage() {
                       <span className="h-2 w-2 rounded-full bg-emerald-600" /> Tanda Tangan Aktif
                     </span>
                     <h5 className="text-xs sm:text-sm font-bold text-gray-900">{tteFile.name}</h5>
-                    <p className="text-[11px] text-slate-500">Diunggah {tteFile.date} · {tteFile.size}</p>
+                    {tteFile.size && (
+                      <p className="text-[11px] text-slate-500">Ukuran {tteFile.size}</p>
+                    )}
                   </div>
                 </div>
 
                 <div className="flex flex-col gap-2 w-full sm:w-auto">
                   <button
                     type="button"
+                    disabled={uploadingTte}
                     onClick={() => tteInputRef.current?.click()}
-                    className="w-full sm:w-auto rounded-xl bg-white border border-slate-200 px-5 py-2 text-xs font-bold text-gray-800 hover:bg-slate-50 transition shadow-2xs"
+                    className="w-full sm:w-auto rounded-xl bg-white border border-slate-200 px-5 py-2 text-xs font-bold text-gray-800 hover:bg-slate-50 transition shadow-2xs disabled:opacity-60"
                   >
-                    Ganti Tanda Tangan
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setTteFile(null)}
-                    className="w-full sm:w-auto rounded-xl bg-[#FDE8E7] border border-[#F5B7B1] px-5 py-2 text-xs font-bold text-[#991B1B] hover:bg-red-100 transition"
-                  >
-                    Hapus
+                    {uploadingTte ? 'Mengunggah...' : 'Ganti Tanda Tangan'}
                   </button>
                 </div>
               </div>

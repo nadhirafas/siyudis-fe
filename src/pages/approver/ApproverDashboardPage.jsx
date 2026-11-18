@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   FileText,
   ArrowRight,
@@ -12,11 +12,36 @@ import {
   Menu,
   X,
   FilePlus,
-  BookMarked
+  BookMarked,
+  Loader2
 } from 'lucide-react'
 
-import { getUser, clearUser } from '../../services/auth'
+import { getUser, saveUser, logout, getRoleName, roleCategory } from '../../services/auth'
+import {
+  getMyProfile,
+  getMySignature,
+  getBeritaAcaraList
+} from '../../services/approverService'
 import ugmLogo from '../../assets/ugm-logo.png'
+
+function resolveRolePrefix(user, pathname = '') {
+  const cat = roleCategory(getRoleName(user))
+  if (cat === 'kadep' || cat === 'manit' || cat === 'kaprodi') return cat
+  if (pathname.startsWith('/kadep')) return 'kadep'
+  if (pathname.startsWith('/manit')) return 'manit'
+  return 'kaprodi'
+}
+
+function formatDateIndo(dateString) {
+  if (!dateString) return '-'
+  const date = new Date(dateString)
+  if (Number.isNaN(date.getTime())) return dateString
+  return date.toLocaleDateString('id-ID', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+}
 
 function Sidebar({ isOpen, onClose, rolePrefix }) {
   const navigate = useNavigate()
@@ -85,7 +110,7 @@ function Sidebar({ isOpen, onClose, rolePrefix }) {
             type="button"
             onClick={() => {
               onClose()
-              navigate('/approver/panduan')
+              navigate(`/${rolePrefix}/panduan`)
             }}
             className="flex h-[43px] w-full items-center gap-4 rounded-xl px-4 text-left text-white/65 transition hover:bg-white/10 hover:text-white"
           >
@@ -98,13 +123,13 @@ function Sidebar({ isOpen, onClose, rolePrefix }) {
   )
 }
 
-function Header({ onOpenSidebar, pageTitle, userDisplayName, userEmail, userPhoto }) {
+function Header({ onOpenSidebar, pageTitle, userDisplayName, userEmail, userPhoto, rolePrefix }) {
   const navigate = useNavigate()
   const [profileOpen, setProfileOpen] = useState(false)
 
-  const handleLogout = () => {
-    clearUser()
+  const handleLogout = async () => {
     setProfileOpen(false)
+    await logout()
     navigate('/')
   }
 
@@ -180,7 +205,7 @@ function Header({ onOpenSidebar, pageTitle, userDisplayName, userEmail, userPhot
                 type="button"
                 onClick={() => {
                   setProfileOpen(false)
-                  navigate('/approver/profile')
+                  navigate(`/${rolePrefix}/profile`)
                 }}
                 className="flex w-full items-center gap-4 rounded-xl p-2.5 text-left hover:bg-gray-50 transition border-b border-gray-100"
               >
@@ -197,7 +222,7 @@ function Header({ onOpenSidebar, pageTitle, userDisplayName, userEmail, userPhot
                 type="button"
                 onClick={() => {
                   setProfileOpen(false)
-                  navigate('/approver/profile')
+                  navigate(`/${rolePrefix}/profile`)
                 }}
                 className="flex w-full items-center gap-4 rounded-xl p-2.5 text-left hover:bg-gray-50 transition border-b border-gray-100"
               >
@@ -235,34 +260,75 @@ function Header({ onOpenSidebar, pageTitle, userDisplayName, userEmail, userPhot
 
 export default function ApproverDashboardPage() {
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  const [storedUser] = useState(() => getUser())
-  const [hasUploadedTTE] = useState(false)
+  const [storedUser, setStoredUser] = useState(() => getUser())
+  const [hasUploadedTTE, setHasUploadedTTE] = useState(true)
+  const [activeSubmissions, setActiveSubmissions] = useState([])
+  const [loading, setLoading] = useState(true)
 
-  // Deteksi role & prodi dari sesi user
-  const rawRole = (storedUser?.role || storedUser?.name || 'kaprodi').toLowerCase()
-  const currentRole = rawRole.includes('kadep')
-    ? 'kadep'
-    : rawRole.includes('manit')
-    ? 'manit'
-    : 'kaprodi'
-  const currentProdi = (storedUser?.prodi || 'TRPL').toUpperCase()
+  const currentRole = resolveRolePrefix(storedUser, pathname)
+  const currentProdi = (
+    storedUser?.program_studi?.kode_prodi ||
+    storedUser?.program_studi?.nama_prodi ||
+    storedUser?.prodi ||
+    'TRPL'
+  ).toUpperCase()
 
-  const activeSubmissions = [
-    {
-      id: 1,
-      prodi: 'TRPL',
-      docNumber: '104/UN1/SV.DTEDI/BA-YUD/VI/2024',
-      date: '3 November 2026',
-    },
-    {
-      id: 2,
-      prodi: 'TRI',
-      docNumber: '105/UN1/SV.DTEDI/BA-YUD/TRI/X/2026',
-      date: '3 November 2026',
-    },
-  ]
+  useEffect(() => {
+    let active = true
+
+    async function loadDashboardData() {
+      setLoading(true)
+
+      // 1. Sinkronkan profil user terbaru
+      try {
+        const profileRes = await getMyProfile()
+        if (active && profileRes?.data) {
+          setStoredUser(profileRes.data)
+          saveUser(profileRes.data)
+        }
+      } catch {
+        // tetap pakai data sessionStorage jika gagal
+      }
+
+      // 2. Cek apakah user sudah punya tanda tangan elektronik
+      try {
+        await getMySignature()
+        if (active) setHasUploadedTTE(true)
+      } catch (err) {
+        if (active) {
+          setHasUploadedTTE(err.status !== 404)
+        }
+      }
+
+      // 3. Ambil daftar Berita Acara yang menunggu persetujuan role ini
+      try {
+        const baRes = await getBeritaAcaraList(currentRole, { limit: 50 })
+        const rawItems = baRes?.data?.data || baRes?.data || []
+
+        // Enforce aturan sequential: Manit hanya menampilkan yang sudah di-approve Kadep
+        const filteredItems =
+          currentRole === 'manit'
+            ? rawItems.filter((item) => item.approved_kadep_at !== null)
+            : rawItems
+
+        if (active) {
+          setActiveSubmissions(filteredItems)
+        }
+      } catch {
+        if (active) setActiveSubmissions([])
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+
+    loadDashboardData()
+    return () => {
+      active = false
+    }
+  }, [currentRole])
 
   const getRoleHeader = () => {
     if (currentRole === 'kadep') {
@@ -273,7 +339,8 @@ export default function ApproverDashboardPage() {
         displayName: storedUser?.name || 'Kadep TEDI',
         email: storedUser?.email || 'kadep_tedi@mail.ugm.ac.id',
         sub: 'Pusat persetujuan yudisium mahasiswa DTEDI SV UGM.',
-        emptyMsg: 'Belum ada draf Berita Acara Yudisium prodi Anda yang disetujui oleh Kaprodi pada periode ini. Dokumen kolektif akan tampil di sini begitu siap untuk Anda tinjau.',
+        emptyMsg:
+          'Belum ada draf Berita Acara Yudisium yang disetujui oleh Kaprodi pada periode ini. Dokumen kolektif akan tampil di sini begitu siap untuk Anda tinjau.',
       }
     }
     if (currentRole === 'manit') {
@@ -284,7 +351,8 @@ export default function ApproverDashboardPage() {
         displayName: storedUser?.name || 'Manit TEDI',
         email: storedUser?.email || 'manit_tedi@mail.ugm.ac.id',
         sub: 'Pusat persetujuan yudisium mahasiswa DTEDI SV UGM.',
-        emptyMsg: 'Belum ada draf Berita Acara Yudisium prodi Anda yang disetujui oleh Kadep pada periode ini. Dokumen kolektif akan tampil di sini begitu siap untuk Anda tinjau.',
+        emptyMsg:
+          'Belum ada draf Berita Acara Yudisium yang disetujui oleh Kadep pada periode ini. Dokumen kolektif akan tampil di sini begitu siap untuk Anda tinjau.',
       }
     }
     return {
@@ -294,7 +362,8 @@ export default function ApproverDashboardPage() {
       displayName: storedUser?.name || `Kaprodi ${currentProdi}`,
       email: storedUser?.email || `${currentProdi.toLowerCase()}_kaprodi@mail.ugm.ac.id`,
       sub: `Pusat persetujuan yudisium mahasiswa Program Studi ${currentProdi} DTEDI SV UGM.`,
-      emptyMsg: 'Belum ada draf Berita Acara Yudisium prodi Anda yang diajukan oleh Staf Administrasi pada periode ini. Dokumen kolektif akan tampil di sini begitu siap untuk Anda tinjau.',
+      emptyMsg:
+        'Belum ada draf Berita Acara Yudisium prodi Anda yang diajukan oleh Staf Administrasi pada periode ini. Dokumen kolektif akan tampil di sini begitu siap untuk Anda tinjau.',
     }
   }
 
@@ -308,7 +377,8 @@ export default function ApproverDashboardPage() {
         pageTitle={roleInfo.title}
         userDisplayName={roleInfo.displayName}
         userEmail={roleInfo.email}
-        userPhoto={storedUser?.photo || null}
+        userPhoto={storedUser?.avatar || storedUser?.photo || null}
+        rolePrefix={roleInfo.rolePrefix}
       />
 
       <main className="ml-0 lg:ml-[272px] pt-[88px]">
@@ -335,7 +405,7 @@ export default function ApproverDashboardPage() {
 
               <button
                 type="button"
-                onClick={() => navigate('/approver/profile')}
+                onClick={() => navigate(`/${roleInfo.rolePrefix}/profile`)}
                 className="inline-flex shrink-0 items-center justify-center gap-2.5 rounded-xl bg-[#142F57] px-6 py-3 text-xs sm:text-sm font-semibold text-white transition hover:bg-[#0B1E38] shadow-xs"
               >
                 Unggah Tanda Tangan <Upload size={16} />
@@ -355,7 +425,12 @@ export default function ApproverDashboardPage() {
           </div>
 
           {/* SECTION BERITA ACARA */}
-          {activeSubmissions.length === 0 ? (
+          {loading ? (
+            <div className="flex items-center justify-center rounded-2xl bg-white p-12 shadow-2xs border border-slate-100">
+              <Loader2 size={28} className="animate-spin text-[#142F57]" />
+              <span className="ml-3 text-sm font-medium text-slate-600">Memuat data Berita Acara...</span>
+            </div>
+          ) : activeSubmissions.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl bg-white p-8 sm:p-12 text-center shadow-2xs border border-slate-100">
               <div className="relative flex h-20 w-20 items-center justify-center rounded-3xl border-2 border-dashed border-[#BBE0FF] bg-[#F4F8FF]">
                 <FilePlus size={32} className="text-[#142F57]" />
@@ -384,62 +459,78 @@ export default function ApproverDashboardPage() {
               </h3>
 
               <div className="space-y-3">
-                {activeSubmissions.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between rounded-2xl bg-[#F4F8FF] p-4 border border-[#DBE5F5] gap-4"
-                  >
-                    <div className="flex items-start sm:items-center gap-4">
-                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#F2C75B] shadow-2xs">
-                        <svg width="34" height="34" viewBox="0 0 34 34" fill="none">
-                          <path
-                            d="M6 7.5C6 5.567 7.567 4 9.5 4H24.5C26.433 4 28 5.567 28 7.5V20.5C28 22.433 26.433 24 24.5 24H11.5L6 29.5V7.5Z"
-                            fill="#543E15"
-                          />
-                          <path
-                            d="M13.5 17.5L20.5 10.5C21.1627 9.83726 22.2373 9.83726 22.9 10.5C23.5627 11.1627 23.5627 12.2373 22.9 12.9L15.9 19.9H13.5V17.5Z"
-                            fill="#F2C75B"
-                          />
-                          <rect x="13" y="20.5" width="11" height="2.2" rx="1" fill="#F2C75B" />
-                        </svg>
-                      </div>
+                {activeSubmissions.map((item) => {
+                  const prodiCode = (
+                    item.program_studi?.kode_prodi ||
+                    item.program_studi?.nama_prodi ||
+                    item.prodi ||
+                    currentProdi
+                  ).toUpperCase()
+                  const periodeLabel =
+                    item.periode ||
+                    item.yudisium_event?.periode ||
+                    item.yudisium_event?.nama_event ||
+                    'Periode Aktif'
+                  const docNumber = item.nomor_surat || item.nomor_dokumen || item.nomor_ba || `BA-${item.id}`
+                  const docDate = formatDateIndo(item.tanggal_surat || item.tanggal_dokumen || item.created_at)
 
-                      <div>
-                        <div className="flex items-center gap-2">
-                          {(currentRole === 'kadep' || currentRole === 'manit') && (
-                            <span className="inline-block shrink-0 rounded-full bg-[#1B365D] px-2.5 py-0.5 text-xs font-bold text-white uppercase tracking-wider">
-                              {item.prodi}
-                            </span>
-                          )}
-
-                          <h4 className="text-sm sm:text-[15px] font-bold text-[#1F2937] flex items-center gap-1.5">
-                            <span>
-                              {currentRole === 'kaprodi'
-                                ? 'Berita Acara Yudisium'
-                                : `Berita Acara Yudisium ${item.prodi}`}
-                            </span>
-                            <span className="text-[15px] font-black text-[#273240] px-0.5">•</span>
-                            <span>Periode Oktober 2026</span>
-                          </h4>
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between rounded-2xl bg-[#F4F8FF] p-4 border border-[#DBE5F5] gap-4"
+                    >
+                      <div className="flex items-start sm:items-center gap-4">
+                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#F2C75B] shadow-2xs">
+                          <svg width="34" height="34" viewBox="0 0 34 34" fill="none">
+                            <path
+                              d="M6 7.5C6 5.567 7.567 4 9.5 4H24.5C26.433 4 28 5.567 28 7.5V20.5C28 22.433 26.433 24 24.5 24H11.5L6 29.5V7.5Z"
+                              fill="#543E15"
+                            />
+                            <path
+                              d="M13.5 17.5L20.5 10.5C21.1627 9.83726 22.2373 9.83726 22.9 10.5C23.5627 11.1627 23.5627 12.2373 22.9 12.9L15.9 19.9H13.5V17.5Z"
+                              fill="#F2C75B"
+                            />
+                            <rect x="13" y="20.5" width="11" height="2.2" rx="1" fill="#F2C75B" />
+                          </svg>
                         </div>
 
-                        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-[#64748B] font-normal">
-                          <span>Nomor Dokumen: <span className="font-bold text-[#374151]">{item.docNumber}</span></span>
-                          <span className="text-[15px] font-black text-[#273240] px-0.5">•</span>
-                          <span>Tanggal Dokumen: <span className="font-bold text-[#374151]">{item.date}</span></span>
-                        </p>
-                      </div>
-                    </div>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {(currentRole === 'kadep' || currentRole === 'manit') && (
+                              <span className="inline-block shrink-0 rounded-full bg-[#1B365D] px-2.5 py-0.5 text-xs font-bold text-white uppercase tracking-wider">
+                                {prodiCode}
+                              </span>
+                            )}
 
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/${roleInfo.rolePrefix}/berita-acara`)}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#142F57] px-5 py-2.5 text-xs font-semibold text-white transition hover:bg-[#0B1E38] self-end sm:self-auto"
-                    >
-                      Tinjau <ArrowRight size={15} />
-                    </button>
-                  </div>
-                ))}
+                            <h4 className="text-sm sm:text-[15px] font-bold text-[#1F2937] flex flex-wrap items-center gap-1.5">
+                              <span>
+                                {currentRole === 'kaprodi'
+                                  ? 'Berita Acara Yudisium'
+                                  : `Berita Acara Yudisium ${prodiCode}`}
+                              </span>
+                              <span className="text-[15px] font-black text-[#273240] px-0.5">•</span>
+                              <span>{periodeLabel}</span>
+                            </h4>
+                          </div>
+
+                          <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-[#64748B] font-normal">
+                            <span>Nomor Dokumen: <span className="font-bold text-[#374151]">{docNumber}</span></span>
+                            <span className="text-[15px] font-black text-[#273240] px-0.5">•</span>
+                            <span>Tanggal Dokumen: <span className="font-bold text-[#374151]">{docDate}</span></span>
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/${roleInfo.rolePrefix}/berita-acara`)}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#142F57] px-5 py-2.5 text-xs font-semibold text-white transition hover:bg-[#0B1E38] self-end sm:self-auto"
+                      >
+                        Tinjau <ArrowRight size={15} />
+                      </button>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           )}
@@ -484,8 +575,10 @@ export default function ApproverDashboardPage() {
               {/* Card Panduan */}
               <div className="flex flex-col justify-between rounded-2xl bg-white p-6 border border-slate-100 shadow-2xs">
                 <div>
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#F4F8FF] text-[#142F57]">
-                    <BookMarked size={22} />
+                  <div className="flex items-center justify-between">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#F4F8FF] text-[#142F57]">
+                      <BookMarked size={22} />
+                    </div>
                   </div>
                   <h4 className="mt-5 text-base font-bold text-gray-900">Panduan dan Dokumen</h4>
                   <p className="mt-2 text-xs text-slate-500 leading-relaxed font-normal">
@@ -495,7 +588,7 @@ export default function ApproverDashboardPage() {
 
                 <button
                   type="button"
-                  onClick={() => navigate('/approver/panduan')}
+                  onClick={() => navigate(`/${roleInfo.rolePrefix}/panduan`)}
                   className="mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#142F57] text-xs sm:text-sm font-semibold text-white transition hover:bg-[#0B1E38]"
                 >
                   Buka Panduan <ArrowRight size={16} />

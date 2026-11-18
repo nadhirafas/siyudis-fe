@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Home,
@@ -20,12 +20,22 @@ import {
   ChevronRight,
   History,
   Inbox,
-  Send
+  Send,
+  Loader2,
+  AlertTriangle
 } from 'lucide-react'
 
-import { getUser, clearUser } from '../../services/auth'
+import { getUser, saveUser, logout } from '../../services/auth'
+import {
+  getMyProfile,
+  getBeritaAcaraList,
+  getBeritaAcaraDetail,
+  approveBeritaAcara,
+  rejectBeritaAcara,
+  previewBeritaAcaraHtml,
+  exportBeritaAcaraPdf
+} from '../../services/approverService'
 import ugmLogo from '../../assets/ugm-logo.png'
-import beritaAcaraPdf from '../../assets/berita-acara-trpl.pdf'
 
 const SignatureStrokeIcon = ({ size = 20, color = '#9A6B29' }) => (
   <svg
@@ -59,6 +69,44 @@ const EmptyStateDoubleLayerIcon = () => (
     </span>
   </div>
 )
+
+function getInitials(name = '') {
+  const parts = String(name).trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return 'MH'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[1][0]).toUpperCase()
+}
+
+function formatDateIndo(dateString) {
+  if (!dateString) return '-'
+  const date = new Date(dateString)
+  if (Number.isNaN(date.getTime())) return dateString
+  return date.toLocaleDateString('id-ID', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
+function mapPengajuanStudents(pengajuanList = []) {
+  return pengajuanList.map((p, idx) => {
+    const nama = p.user?.name || p.nama_mahasiswa || `Mahasiswa ${idx + 1}`
+    const nim = p.user?.nim || p.nim || p.data_berita_acara?.nim || '-'
+    const predikat =
+      p.data_berita_acara?.predikat_kelulusan ||
+      p.data_berita_acara?.predikat ||
+      p.predikat_kelulusan ||
+      '-'
+
+    return {
+      id: p.id || idx + 1,
+      initials: getInitials(nama),
+      name: nama,
+      nim,
+      predikat,
+    }
+  })
+}
 
 function Sidebar({ isOpen, onClose }) {
   const navigate = useNavigate()
@@ -127,7 +175,7 @@ function Sidebar({ isOpen, onClose }) {
             type="button"
             onClick={() => {
               onClose()
-              navigate('/approver/panduan')
+              navigate('/kaprodi/panduan')
             }}
             className="flex h-[43px] w-full items-center gap-4 rounded-xl px-4 text-left text-white/65 transition hover:bg-white/10 hover:text-white"
           >
@@ -144,9 +192,9 @@ function Header({ onOpenSidebar, userDisplayName, userEmail, userPhoto }) {
   const navigate = useNavigate()
   const [profileOpen, setProfileOpen] = useState(false)
 
-  const handleLogout = () => {
-    clearUser()
+  const handleLogout = async () => {
     setProfileOpen(false)
+    await logout()
     navigate('/')
   }
 
@@ -216,7 +264,7 @@ function Header({ onOpenSidebar, userDisplayName, userEmail, userPhoto }) {
                 type="button"
                 onClick={() => {
                   setProfileOpen(false)
-                  navigate('/approver/profile')
+                  navigate('/kaprodi/profile')
                 }}
                 className="flex w-full items-center gap-4 rounded-xl p-2.5 text-left hover:bg-gray-50 transition border-b border-gray-100"
               >
@@ -233,7 +281,7 @@ function Header({ onOpenSidebar, userDisplayName, userEmail, userPhoto }) {
                 type="button"
                 onClick={() => {
                   setProfileOpen(false)
-                  navigate('/approver/profile')
+                  navigate('/kaprodi/profile')
                 }}
                 className="flex w-full items-center gap-4 rounded-xl p-2.5 text-left hover:bg-gray-50 transition border-b border-gray-100"
               >
@@ -267,58 +315,16 @@ function Header({ onOpenSidebar, userDisplayName, userEmail, userPhoto }) {
   )
 }
 
-const INITIAL_STUDENTS = [
-  {
-    initials: 'NA',
-    name: 'Nadila Aulia Rahma',
-    nim: '22/505388/SV/21878',
-    predikat: 'Cumlaude'
-  },
-  {
-    initials: 'GR',
-    name: 'Gilang Ramadhan Putra',
-    nim: '22/505700/SV/22013',
-    predikat: 'Cumlaude'
-  },
-  {
-    initials: 'RA',
-    name: 'Rizky Adi Nugroho',
-    nim: '22/505810/SV/22028',
-    predikat: 'Tidak Cumlaude'
-  },
-  {
-    initials: 'DB',
-    name: 'Dimas Bagus Saputra',
-    nim: '22/506015/SV/22054',
-    predikat: 'Tidak Cumlaude'
-  }
-]
-
-const INITIAL_DRAFT = {
-  id: 1,
-  periode: 'Periode Oktober 2026',
-  docNumber: '104/UN1/SV.DTEDI/BA-YUD/VI/2024',
-  pdfFile: beritaAcaraPdf,
-  students: INITIAL_STUDENTS
-}
-
-const INITIAL_HISTORY = [
-  {
-    id: 101,
-    periode: 'Periode Oktober 2026',
-    approvedDate: '3 November 2026',
-    docNumber: '104/UN1/SV.DTEDI/BA-YUD/VI/2024',
-    pdfFile: beritaAcaraPdf,
-    students: INITIAL_STUDENTS
-  }
-]
-
 export default function KaprodiBeritaAcaraPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [storedUser] = useState(() => getUser())
+  const [storedUser, setStoredUser] = useState(() => getUser())
 
-  // Deteksi Prodi Dinamis
-  const prodiCode = (storedUser?.prodi || 'TRPL').toUpperCase()
+  const prodiCode = (
+    storedUser?.program_studi?.kode_prodi ||
+    storedUser?.program_studi?.nama_prodi ||
+    storedUser?.prodi ||
+    'TRPL'
+  ).toUpperCase()
   const userDisplayName = storedUser?.name || `Kaprodi ${prodiCode}`
   const userEmail = storedUser?.email || `${prodiCode.toLowerCase()}_kaprodi@mail.ugm.ac.id`
 
@@ -327,22 +333,137 @@ export default function KaprodiBeritaAcaraPage() {
   const [searchActive, setSearchActive] = useState('')
   const [searchHistory, setSearchHistory] = useState('')
 
-  const [activeDraft, setActiveDraft] = useState(INITIAL_DRAFT)
-  const [historyList, setHistoryList] = useState(INITIAL_HISTORY)
+  // Data States dari Backend
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
 
+  const [activeDrafts, setActiveDrafts] = useState([])
+  const [selectedDraftId, setSelectedDraftId] = useState(null)
+  const [activeDraftDetail, setActiveDraftDetail] = useState(null)
+  const [activePreviewHtml, setActivePreviewHtml] = useState('')
+
+  const [historyList, setHistoryList] = useState([])
+  const [previewHistoryDoc, setPreviewHistoryDoc] = useState(null)
+  const [historyPreviewHtml, setHistoryPreviewHtml] = useState('')
+  const [loadingHistoryPreview, setLoadingHistoryPreview] = useState(false)
+
+  // Modal & Alert States
   const [returnModalOpen, setReturnModalOpen] = useState(false)
   const [returnNote, setReturnNote] = useState('')
   const [approveModalOpen, setApproveModalOpen] = useState(false)
-  const [previewHistoryDoc, setPreviewHistoryDoc] = useState(null)
   const [toastMessage, setToastMessage] = useState(null)
+  const [errorBanner, setErrorBanner] = useState(null)
 
   const triggerToast = (msg) => {
     setToastMessage(msg)
-    setTimeout(() => setToastMessage(null), 3500)
+    setTimeout(() => setToastMessage(null), 4000)
   }
 
-  const filteredStudents = activeDraft
-    ? activeDraft.students.filter(
+  // Muat detail & preview HTML untuk draft aktif tertentu
+  const loadDraftDetailAndPreview = useCallback(async (baId) => {
+    if (!baId) {
+      setActiveDraftDetail(null)
+      setActivePreviewHtml('')
+      return
+    }
+
+    try {
+      const [detailRes, previewRes] = await Promise.all([
+        getBeritaAcaraDetail('kaprodi', baId),
+        previewBeritaAcaraHtml(baId).catch(() => null),
+      ])
+
+      const detail = detailRes?.data
+      if (detail) {
+        setActiveDraftDetail({
+          id: detail.id,
+          periode:
+            detail.periode ||
+            detail.yudisium_event?.periode ||
+            detail.yudisium_event?.nama_event ||
+            'Periode Aktif',
+          docNumber: detail.nomor_surat || detail.nomor_dokumen || detail.nomor_ba || `BA-${detail.id}`,
+          students: mapPengajuanStudents(detail.pengajuan || []),
+        })
+      }
+
+      setActivePreviewHtml(previewRes?.data?.html || '')
+    } catch (err) {
+      setErrorBanner(err.message || 'Gagal memuat detail Berita Acara.')
+    }
+  }, [])
+
+  // Muat seluruh data antrean aktif & histori dari backend
+  const fetchAllData = useCallback(async (showToastOnDone = false) => {
+    setLoading(true)
+    setErrorBanner(null)
+
+    try {
+      // Sinkronkan profil user
+      const profileRes = await getMyProfile().catch(() => null)
+      if (profileRes?.data) {
+        setStoredUser(profileRes.data)
+        saveUser(profileRes.data)
+      }
+
+      // Ambil daftar aktif (status = diajukan) & histori (approved_kaprodi + completed)
+      const [aktifRes, approvedRes, completedRes] = await Promise.all([
+        getBeritaAcaraList('kaprodi', { status: 'diajukan', limit: 50 }),
+        getBeritaAcaraList('kaprodi', { status: 'approved_kaprodi', limit: 50 }).catch(() => null),
+        getBeritaAcaraList('kaprodi', { status: 'completed', limit: 50 }).catch(() => null),
+      ])
+
+      const aktifItems = aktifRes?.data?.data || aktifRes?.data || []
+      setActiveDrafts(aktifItems)
+
+      if (aktifItems.length > 0) {
+        const firstId = aktifItems[0].id
+        setSelectedDraftId(firstId)
+        await loadDraftDetailAndPreview(firstId)
+      } else {
+        setSelectedDraftId(null)
+        setActiveDraftDetail(null)
+        setActivePreviewHtml('')
+      }
+
+      const approvedItems = approvedRes?.data?.data || approvedRes?.data || []
+      const completedItems = completedRes?.data?.data || completedRes?.data || []
+      const mergedHistory = [...completedItems, ...approvedItems].sort(
+        (a, b) => new Date(b.approved_kaprodi_at || b.updated_at || 0) - new Date(a.approved_kaprodi_at || a.updated_at || 0)
+      )
+
+      setHistoryList(
+        mergedHistory.map((item) => ({
+          id: item.id,
+          status: item.status,
+          periode:
+            item.periode ||
+            item.yudisium_event?.periode ||
+            item.yudisium_event?.nama_event ||
+            'Periode Yudisium',
+          approvedDate: formatDateIndo(item.approved_kaprodi_at || item.updated_at),
+          docNumber: item.nomor_surat || item.nomor_dokumen || item.nomor_ba || `BA-${item.id}`,
+          pengajuanCount: item.pengajuan_count ?? item.pengajuan?.length ?? 0,
+        }))
+      )
+
+      if (showToastOnDone) {
+        triggerToast('Data Berita Acara berhasil dimuat ulang.')
+      }
+    } catch (err) {
+      setErrorBanner(err.message || 'Gagal memuat data Berita Acara dari server.')
+    } finally {
+      setLoading(false)
+    }
+  }, [loadDraftDetailAndPreview])
+
+  useEffect(() => {
+    fetchAllData(false)
+  }, [fetchAllData])
+
+  const filteredStudents = activeDraftDetail
+    ? activeDraftDetail.students.filter(
         (mhs) =>
           mhs.name.toLowerCase().includes(searchActive.toLowerCase()) ||
           mhs.nim.toLowerCase().includes(searchActive.toLowerCase())
@@ -352,45 +473,83 @@ export default function KaprodiBeritaAcaraPage() {
   const filteredHistory = historyList.filter(
     (item) =>
       item.periode.toLowerCase().includes(searchHistory.toLowerCase()) ||
-      item.docNumber.toLowerCase().includes(searchHistory.toLowerCase()) ||
-      item.students.some(
-        (s) =>
-          s.name.toLowerCase().includes(searchHistory.toLowerCase()) ||
-          s.nim.toLowerCase().includes(searchHistory.toLowerCase())
-      )
+      item.docNumber.toLowerCase().includes(searchHistory.toLowerCase())
   )
 
-  const handleConfirmReturn = (e) => {
+  const handleConfirmReturn = async (e) => {
     e.preventDefault()
-    if (!returnNote.trim()) return
-    setReturnModalOpen(false)
-    setReturnNote('')
-    setActiveDraft(null)
-    triggerToast('Draft Berita Acara berhasil dikembalikan ke Staf Administrasi beserta catatan revisi.')
-  }
+    if (!returnNote.trim() || !activeDraftDetail) return
 
-  const handleConfirmApprove = () => {
-    if (!activeDraft) return
-    const newlyApproved = {
-      ...activeDraft,
-      id: Date.now(),
-      approvedDate: '16 November 2026'
+    setSubmitting(true)
+    setErrorBanner(null)
+    try {
+      await rejectBeritaAcara('kaprodi', activeDraftDetail.id, returnNote.trim())
+      setReturnModalOpen(false)
+      setReturnNote('')
+      triggerToast('Draft Berita Acara berhasil dikembalikan ke Staf Administrasi beserta catatan revisi.')
+      await fetchAllData(false)
+    } catch (err) {
+      setErrorBanner(err.message || 'Gagal mengembalikan Berita Acara.')
+    } finally {
+      setSubmitting(false)
     }
-    setHistoryList((prev) => [newlyApproved, ...prev])
-    setActiveDraft(null)
-    setApproveModalOpen(false)
-    setActiveTab('histori')
-    triggerToast('Berita Acara Yudisium berhasil disetujui dan ditandatangani secara elektronik!')
   }
 
-  const handleDownloadAssetPdf = (pdfUrl, filename) => {
-    const link = document.createElement('a')
-    link.href = pdfUrl || beritaAcaraPdf
-    link.download = filename
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    triggerToast(`Mengunduh ${filename}`)
+  const handleConfirmApprove = async () => {
+    if (!activeDraftDetail) return
+
+    setSubmitting(true)
+    setErrorBanner(null)
+    try {
+      await approveBeritaAcara('kaprodi', activeDraftDetail.id)
+      setApproveModalOpen(false)
+      setActiveTab('histori')
+      triggerToast('Berita Acara Yudisium berhasil disetujui dan ditandatangani secara elektronik!')
+      await fetchAllData(false)
+    } catch (err) {
+      setApproveModalOpen(false)
+      setErrorBanner(err.message || 'Gagal menyetujui Berita Acara. Pastikan tanda tangan elektronik sudah diunggah.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleOpenHistoryPreview = async (item) => {
+    setPreviewHistoryDoc(item)
+    setHistoryPreviewHtml('')
+    setLoadingHistoryPreview(true)
+
+    try {
+      const previewRes = await previewBeritaAcaraHtml(item.id)
+      setHistoryPreviewHtml(previewRes?.data?.html || '')
+    } catch (err) {
+      setErrorBanner(err.message || 'Gagal memuat pratinjau Berita Acara.')
+    } finally {
+      setLoadingHistoryPreview(false)
+    }
+  }
+
+  const handleExportOfficialPdf = async (baId, filename) => {
+    setDownloadingPdf(true)
+    setErrorBanner(null)
+    try {
+      const blob = await exportBeritaAcaraPdf(baId)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+      triggerToast(`Mengunduh ${filename}`)
+    } catch (err) {
+      setErrorBanner(
+        err.message || 'PDF resmi baru dapat diunduh setelah disetujui oleh Kepala Departemen dan Manit.'
+      )
+    } finally {
+      setDownloadingPdf(false)
+    }
   }
 
   return (
@@ -400,7 +559,7 @@ export default function KaprodiBeritaAcaraPage() {
         onOpenSidebar={() => setSidebarOpen(true)}
         userDisplayName={userDisplayName}
         userEmail={userEmail}
-        userPhoto={storedUser?.photo || null}
+        userPhoto={storedUser?.avatar || storedUser?.photo || null}
       />
 
       <main className="ml-0 lg:ml-[272px] pt-[88px]">
@@ -409,6 +568,18 @@ export default function KaprodiBeritaAcaraPage() {
             <div className="flex items-center justify-between rounded-2xl bg-emerald-50 border border-emerald-300 px-5 py-3.5 text-xs sm:text-sm font-semibold text-emerald-900 shadow-xs">
               <span>{toastMessage}</span>
               <button type="button" onClick={() => setToastMessage(null)} className="text-emerald-700 hover:text-emerald-950">
+                <X size={16} />
+              </button>
+            </div>
+          )}
+
+          {errorBanner && (
+            <div className="flex items-center justify-between gap-3 rounded-2xl bg-[#FDF2F2] border border-[#F5C6CB] px-5 py-3.5 text-xs sm:text-sm font-semibold text-[#7A2619] shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <AlertTriangle size={18} className="shrink-0 text-[#DC2626]" />
+                <span>{errorBanner}</span>
+              </div>
+              <button type="button" onClick={() => setErrorBanner(null)} className="text-[#7A2619] hover:text-red-950">
                 <X size={16} />
               </button>
             </div>
@@ -443,7 +614,7 @@ export default function KaprodiBeritaAcaraPage() {
                       : 'bg-[#CBD8EC] text-[#334155]'
                   }`}
                 >
-                  {activeDraft ? 1 : 0}
+                  {activeDrafts.length}
                 </span>
               </button>
 
@@ -469,304 +640,339 @@ export default function KaprodiBeritaAcaraPage() {
                 </span>
               </button>
             </div>
+
+            {activeDrafts.length > 1 && activeTab === 'aktif' && (
+              <div className="flex flex-wrap items-center gap-2">
+                {activeDrafts.map((ba) => (
+                  <button
+                    key={ba.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedDraftId(ba.id)
+                      loadDraftDetailAndPreview(ba.id)
+                    }}
+                    className={`rounded-xl px-3.5 py-2 text-xs font-bold transition border ${
+                      selectedDraftId === ba.id
+                        ? 'bg-[#142F57] text-white border-[#142F57]'
+                        : 'bg-white text-gray-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    {ba.periode || ba.nomor_surat || `BA #${ba.id}`}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          {activeTab === 'aktif' && (
+          {loading ? (
+            <div className="flex items-center justify-center rounded-2xl bg-white p-14 shadow-2xs border border-slate-100">
+              <Loader2 size={28} className="animate-spin text-[#142F57]" />
+              <span className="ml-3 text-sm font-medium text-slate-600">Memuat data Berita Acara...</span>
+            </div>
+          ) : (
             <>
-              {!activeDraft ? (
+              {activeTab === 'aktif' && (
+                <>
+                  {!activeDraftDetail ? (
+                    <div className="rounded-2xl bg-white p-6 sm:p-8 shadow-2xs border border-slate-100 space-y-6">
+                      <div>
+                        <h3 className="text-base sm:text-lg font-bold text-gray-900">
+                          Persetujuan Berita Acara Aktif
+                        </h3>
+                        <p className="mt-1 text-xs text-slate-500 font-normal">
+                          Mahasiswa pada daftar ini menunggu keputusan Anda.
+                        </p>
+                      </div>
+
+                      {/* SEARCH BAR */}
+                      <div className="relative">
+                        <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="text"
+                          value={searchActive}
+                          onChange={(e) => setSearchActive(e.target.value)}
+                          placeholder="Cari Nama / NIM..."
+                          className="w-full rounded-xl border border-slate-200/70 bg-[#F8FAFC] py-2.5 pl-10 pr-4 text-xs sm:text-sm text-gray-900 placeholder:text-slate-400 focus:border-[#142F57] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#142F57] transition"
+                        />
+                      </div>
+
+                      <div className="flex flex-col items-center justify-center py-14 text-center">
+                        <EmptyStateDoubleLayerIcon />
+
+                        <h4 className="mt-5 text-base sm:text-lg font-bold text-gray-900">
+                          Belum Ada Berita Acara yang Perlu Disetujui
+                        </h4>
+                        <p className="mt-1.5 max-w-md text-xs text-slate-500 leading-relaxed font-normal">
+                          Belum ada draf Berita Acara prodi Anda yang diajukan oleh Staf Administrasi pada periode ini. Dokumen kolektif akan tampil di sini begitu siap untuk Anda tinjau.
+                        </p>
+
+                        <button
+                          type="button"
+                          onClick={() => fetchAllData(true)}
+                          className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#EEF4FF] px-5 py-2 text-xs font-bold text-[#142F57] hover:bg-[#DCE7F6] transition"
+                        >
+                          <RotateCw size={14} /> Muat Ulang Data
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      <div className="rounded-2xl bg-white p-6 sm:p-7 shadow-2xs border border-slate-100 space-y-5">
+                        <div>
+                          <h3 className="text-base sm:text-lg font-bold text-gray-900">
+                            Daftar Mahasiswa Yudisium {prodiCode} &bull; {activeDraftDetail.periode}
+                          </h3>
+                          <p className="mt-1 text-xs text-slate-500 font-normal">
+                            Mahasiswa pada daftar ini menunggu keputusan Anda.
+                          </p>
+                        </div>
+
+                        {/* SEARCH BAR */}
+                        <div className="relative">
+                          <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type="text"
+                            value={searchActive}
+                            onChange={(e) => setSearchActive(e.target.value)}
+                            placeholder="Cari Nama / NIM..."
+                            className="w-full rounded-xl border border-slate-200/70 bg-[#F8FAFC] py-2.5 pl-10 pr-4 text-xs sm:text-sm text-gray-900 placeholder:text-slate-400 focus:border-[#142F57] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#142F57] transition"
+                          />
+                        </div>
+
+                        {/* Tabel Mahasiswa */}
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                                <th className="py-3 px-3 w-14">NO</th>
+                                <th className="py-3 px-3">MAHASISWA</th>
+                                <th className="py-3 px-3">NIM</th>
+                                <th className="py-3 px-3">PREDIKAT KELULUSAN</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 text-xs sm:text-sm">
+                              {filteredStudents.map((mhs, idx) => (
+                                <tr key={mhs.id} className="hover:bg-slate-50/70 transition">
+                                  <td className="py-3.5 px-3 font-semibold text-slate-500">
+                                    {String(idx + 1).padStart(2, '0')}
+                                  </td>
+                                  <td className="py-3.5 px-3">
+                                    <div className="flex items-center gap-3">
+                                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#EEF3FA] border border-slate-200 text-xs font-bold text-[#142F57]">
+                                        {mhs.initials}
+                                      </span>
+                                      <span className="font-bold text-gray-900">{mhs.name}</span>
+                                    </div>
+                                  </td>
+                                  <td className="py-3.5 px-3 text-slate-700 font-normal">{mhs.nim}</td>
+                                  <td className="py-3.5 px-3 text-gray-900 font-normal">{mhs.predikat}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Footer Tabel */}
+                        <div className="flex items-center justify-between border-t border-slate-100 pt-4 text-xs text-slate-500">
+                          <span>Menampilkan {filteredStudents.length} mahasiswa</span>
+                          <div className="inline-flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                            >
+                              <ChevronLeft size={15} />
+                            </button>
+                            <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-[#EEF3FA] font-bold text-gray-900">
+                              1
+                            </span>
+                            <button
+                              type="button"
+                              className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                            >
+                              <ChevronRight size={15} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl bg-white p-6 sm:p-7 shadow-2xs border border-slate-100 space-y-5">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EEF4FF] text-[#142F57]">
+                              <FileText size={20} />
+                            </div>
+                            <div>
+                              <h3 className="text-base font-bold text-gray-900">
+                                Dokumen Draft Berita Acara Yudisium &bull; Prodi {prodiCode}
+                              </h3>
+                              <p className="text-xs text-slate-500 font-normal">
+                                Pratinjau penuh surat Berita Acara beserta lampiran daftar kelulusan mahasiswa
+                              </p>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => window.print()}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-gray-800 hover:bg-slate-50 transition shadow-2xs"
+                          >
+                            <Download size={15} /> Cetak / Simpan Draft
+                          </button>
+                        </div>
+
+                        <div className="rounded-2xl bg-[#F4F7FB] p-3 sm:p-4 border border-slate-200/70">
+                          <div className="h-[680px] w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs">
+                            {activePreviewHtml ? (
+                              <iframe
+                                srcDoc={activePreviewHtml}
+                                title={`Pratinjau ${activeDraftDetail.periode}`}
+                                className="h-full w-full border-0"
+                              />
+                            ) : (
+                              <div className="flex h-full items-center justify-center text-xs text-slate-500">
+                                Pratinjau dokumen belum tersedia.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between rounded-2xl bg-white p-5 sm:p-6 shadow-2xs border border-slate-100 gap-4">
+                        <div className="flex items-start gap-3 max-w-md">
+                          <ShieldCheck size={20} strokeWidth={2.2} className="shrink-0 text-[#142F57] mt-0.5" />
+                          <p className="text-xs text-slate-500 leading-relaxed font-normal">
+                            Pastikan isi surat draf Berita Acara di atas telah sesuai sebelum memberikan tanda tangan persetujuan atau mengembalikan ke Staf Administrasi.
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
+                          <button
+                            type="button"
+                            onClick={() => setReturnModalOpen(true)}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#FDE8E7] border border-[#F5B7B1] px-5 py-2.5 text-xs sm:text-sm font-semibold text-[#991B1B] hover:bg-red-100 transition"
+                          >
+                            Kembalikan ke Staf Administrasi <CornerUpLeft size={15} />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setApproveModalOpen(true)}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#142F57] px-5 py-2.5 text-xs sm:text-sm font-semibold text-white hover:bg-[#0B1E38] transition shadow-xs"
+                          >
+                            Setujui &amp; Tanda Tangani <Check size={16} strokeWidth={2.6} className="text-[#FFD32A]" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {activeTab === 'histori' && (
                 <div className="rounded-2xl bg-white p-6 sm:p-8 shadow-2xs border border-slate-100 space-y-6">
                   <div>
                     <h3 className="text-base sm:text-lg font-bold text-gray-900">
-                      Persetujuan Berita Acara Aktif
+                      Histori Berita Acara Yudisium
                     </h3>
                     <p className="mt-1 text-xs text-slate-500 font-normal">
-                      Mahasiswa pada daftar ini menunggu keputusan Anda.
+                      Arsip dokumen Berita Acara Yudisium per periode yang telah selesai Anda setujui dan tanda tangani.
                     </p>
                   </div>
 
-                  {/* SEARCH BAR */}
                   <div className="relative">
                     <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input
                       type="text"
-                      value={searchActive}
-                      onChange={(e) => setSearchActive(e.target.value)}
-                      placeholder="Cari Nama / NIM..."
+                      value={searchHistory}
+                      onChange={(e) => setSearchHistory(e.target.value)}
+                      placeholder="Cari Nama Periode atau Nomor Dokumen..."
                       className="w-full rounded-xl border border-slate-200/70 bg-[#F8FAFC] py-2.5 pl-10 pr-4 text-xs sm:text-sm text-gray-900 placeholder:text-slate-400 focus:border-[#142F57] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#142F57] transition"
                     />
                   </div>
 
-                  <div className="flex flex-col items-center justify-center py-14 text-center">
-                    <EmptyStateDoubleLayerIcon />
+                  {filteredHistory.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-14 text-center">
+                      <EmptyStateDoubleLayerIcon />
 
-                    <h4 className="mt-5 text-base sm:text-lg font-bold text-gray-900">
-                      Belum Ada Berita Acara yang Perlu Disetujui
-                    </h4>
-                    <p className="mt-1.5 max-w-md text-xs text-slate-500 leading-relaxed font-normal">
-                      Belum ada draf Berita Acara prodi Anda yang diajukan oleh Staf Administrasi pada periode ini. Dokumen kolektif akan tampil di sini begitu siap untuk Anda tinjau.
-                    </p>
-
-                    <button
-                      type="button"
-                      onClick={() => triggerToast('Data Berita Acara berhasil dimuat ulang.')}
-                      className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#EEF4FF] px-5 py-2 text-xs font-bold text-[#142F57] hover:bg-[#DCE7F6] transition"
-                    >
-                      <RotateCw size={14} /> Muat Ulang Data
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  <div className="rounded-2xl bg-white p-6 sm:p-7 shadow-2xs border border-slate-100 space-y-5">
-                    <div>
-                      <h3 className="text-base sm:text-lg font-bold text-gray-900">
-                        Daftar Mahasiswa Yudisium {prodiCode} &bull; {activeDraft.periode}
-                      </h3>
-                      <p className="mt-1 text-xs text-slate-500 font-normal">
-                        Mahasiswa pada daftar ini menunggu keputusan Anda.
+                      <h4 className="mt-5 text-base sm:text-lg font-bold text-gray-900">
+                        Belum Ada Histori Berita Acara
+                      </h4>
+                      <p className="mt-1.5 max-w-md text-xs text-slate-500 leading-relaxed font-normal">
+                        Belum ada dokumen Berita Acara Yudisium yang telah disahkan pada periode sebelumnya.
                       </p>
                     </div>
-
-                    {/* SEARCH BAR */}
-                    <div className="relative">
-                      <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                      <input
-                        type="text"
-                        value={searchActive}
-                        onChange={(e) => setSearchActive(e.target.value)}
-                        placeholder="Cari Nama / NIM..."
-                        className="w-full rounded-xl border border-slate-200/70 bg-[#F8FAFC] py-2.5 pl-10 pr-4 text-xs sm:text-sm text-gray-900 placeholder:text-slate-400 focus:border-[#142F57] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#142F57] transition"
-                      />
-                    </div>
-
-                    {/* Tabel Mahasiswa */}
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                            <th className="py-3 px-3 w-14">NO</th>
-                            <th className="py-3 px-3">MAHASISWA</th>
-                            <th className="py-3 px-3">NIM</th>
-                            <th className="py-3 px-3">PREDIKAT KELULUSAN</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 text-xs sm:text-sm">
-                          {filteredStudents.map((mhs, idx) => (
-                            <tr key={mhs.nim} className="hover:bg-slate-50/70 transition">
-                              <td className="py-3.5 px-3 font-semibold text-slate-500">
-                                {String(idx + 1).padStart(2, '0')}
-                              </td>
-                              <td className="py-3.5 px-3">
-                                <div className="flex items-center gap-3">
-                                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#EEF3FA] border border-slate-200 text-xs font-bold text-[#142F57]">
-                                    {mhs.initials}
-                                  </span>
-                                  <span className="font-bold text-gray-900">{mhs.name}</span>
-                                </div>
-                              </td>
-                              <td className="py-3.5 px-3 text-slate-700 font-normal">{mhs.nim}</td>
-                              <td className="py-3.5 px-3 text-gray-900 font-normal">{mhs.predikat}</td>
+                  ) : (
+                    <>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                              <th className="py-3 px-3 w-14">NO</th>
+                              <th className="py-3 px-3">NAMA PERIODE</th>
+                              <th className="py-3 px-3">NOMOR DOKUMEN</th>
+                              <th className="py-3 px-3">JUMLAH LULUSAN</th>
+                              <th className="py-3 px-3 text-right">AKSI</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Footer Tabel & Paginasi */}
-                    <div className="flex items-center justify-between border-t border-slate-100 pt-4 text-xs text-slate-500">
-                      <span>Menampilkan {filteredStudents.length} mahasiswa</span>
-                      <div className="inline-flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-                        >
-                          <ChevronLeft size={15} />
-                        </button>
-                        <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-[#EEF3FA] font-bold text-gray-900">
-                          1
-                        </span>
-                        <button
-                          type="button"
-                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-                        >
-                          <ChevronRight size={15} />
-                        </button>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 text-xs sm:text-sm">
+                            {filteredHistory.map((item, idx) => (
+                              <tr key={item.id} className="hover:bg-slate-50/70 transition">
+                                <td className="py-4 px-3 font-semibold text-slate-500">
+                                  {String(idx + 1).padStart(2, '0')}
+                                </td>
+                                <td className="py-4 px-3">
+                                  <p className="font-bold text-gray-900">{item.periode}</p>
+                                  <p className="text-[11px] text-slate-600 mt-0.5">
+                                    Disetujui: {item.approvedDate} &bull;{' '}
+                                    <span className="font-semibold text-[#142F57]">
+                                      {item.status === 'completed' ? 'Final (Selesai)' : 'Menunggu Pengesahan Departemen'}
+                                    </span>
+                                  </p>
+                                </td>
+                                <td className="py-4 px-3 text-slate-700 font-normal">{item.docNumber}</td>
+                                <td className="py-4 px-3 font-medium text-gray-800">
+                                  {item.pengajuanCount} Mahasiswa
+                                </td>
+                                <td className="py-4 px-3 text-right">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenHistoryPreview(item)}
+                                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#142F57] px-4 py-2 text-xs font-semibold text-white hover:bg-[#0B1E38] transition shadow-2xs"
+                                  >
+                                    <Eye size={14} /> Lihat
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
-                    </div>
-                  </div>
 
-                  <div className="rounded-2xl bg-white p-6 sm:p-7 shadow-2xs border border-slate-100 space-y-5">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EEF4FF] text-[#142F57]">
-                          <FileText size={20} />
+                      <div className="flex items-center justify-between border-t border-slate-100 pt-4 text-xs text-slate-500">
+                        <span>Menampilkan {filteredHistory.length} periode</span>
+                        <div className="inline-flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                          >
+                            <ChevronLeft size={15} />
+                          </button>
+                          <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-[#EEF3FA] font-bold text-gray-900">
+                            1
+                          </span>
+                          <button
+                            type="button"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                          >
+                            <ChevronRight size={15} />
+                          </button>
                         </div>
-                        <div>
-                          <h3 className="text-base font-bold text-gray-900">
-                            Dokumen Draft Berita Acara Yudisium &bull; Prodi {prodiCode}
-                          </h3>
-                          <p className="text-xs text-slate-500 font-normal">
-                            Pratinjau penuh surat Berita Acara beserta lampiran daftar kelulusan mahasiswa
-                          </p>
-                        </div>
                       </div>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleDownloadAssetPdf(
-                            activeDraft.pdfFile,
-                            `Draft_Berita_Acara_${prodiCode}_Oktober_2026.pdf`
-                          )
-                        }
-                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-gray-800 hover:bg-slate-50 transition shadow-2xs"
-                      >
-                        <Download size={15} /> Unduh Draft Berita Acara (PDF)
-                      </button>
-                    </div>
-
-                    <div className="rounded-2xl bg-[#F4F7FB] p-3 sm:p-4 border border-slate-200/70">
-                      <div className="h-[680px] w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs">
-                        <iframe
-                          src={`${activeDraft.pdfFile}#toolbar=0&navpanes=0&scrollbar=1`}
-                          title={`Pratinjau ${activeDraft.periode}`}
-                          className="h-full w-full border-0"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between rounded-2xl bg-white p-5 sm:p-6 shadow-2xs border border-slate-100 gap-4">
-                    <div className="flex items-start gap-3 max-w-md">
-                      <ShieldCheck size={20} strokeWidth={2.2} className="shrink-0 text-[#142F57] mt-0.5" />
-                      <p className="text-xs text-slate-500 leading-relaxed font-normal">
-                        Pastikan isi surat draf Berita Acara di atas telah sesuai sebelum memberikan tanda tangan persetujuan atau mengembalikan ke Staf Administrasi.
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
-                      <button
-                        type="button"
-                        onClick={() => setReturnModalOpen(true)}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#FDE8E7] border border-[#F5B7B1] px-5 py-2.5 text-xs sm:text-sm font-semibold text-[#991B1B] hover:bg-red-100 transition"
-                      >
-                        Kembalikan ke Staf Administrasi <CornerUpLeft size={15} />
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setApproveModalOpen(true)}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#142F57] px-5 py-2.5 text-xs sm:text-sm font-semibold text-white hover:bg-[#0B1E38] transition shadow-xs"
-                      >
-                        Setujui &amp; Tanda Tangani <Check size={16} strokeWidth={2.6} className="text-[#FFD32A]" />
-                      </button>
-                    </div>
-                  </div>
+                    </>
+                  )}
                 </div>
               )}
             </>
-          )}
-
-          {activeTab === 'histori' && (
-            <div className="rounded-2xl bg-white p-6 sm:p-8 shadow-2xs border border-slate-100 space-y-6">
-              <div>
-                <h3 className="text-base sm:text-lg font-bold text-gray-900">
-                  Histori Berita Acara Yudisium
-                </h3>
-                <p className="mt-1 text-xs text-slate-500 font-normal">
-                  Arsip dokumen Berita Acara Yudisium per periode yang telah selesai Anda setujui dan tanda tangani.
-                </p>
-              </div>
-
-              <div className="relative">
-                <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchHistory}
-                  onChange={(e) => setSearchHistory(e.target.value)}
-                  placeholder="Cari Nama Periode, Nama Mahasiswa, / NIM..."
-                  className="w-full rounded-xl border border-slate-200/70 bg-[#F8FAFC] py-2.5 pl-10 pr-4 text-xs sm:text-sm text-gray-900 placeholder:text-slate-400 focus:border-[#142F57] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#142F57] transition"
-                />
-              </div>
-
-              {filteredHistory.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-14 text-center">
-                  <EmptyStateDoubleLayerIcon />
-
-                  <h4 className="mt-5 text-base sm:text-lg font-bold text-gray-900">
-                    Belum Ada Histori Berita Acara
-                  </h4>
-                  <p className="mt-1.5 max-w-md text-xs text-slate-500 leading-relaxed font-normal">
-                    Belum ada dokumen Berita Acara Yudisium yang telah disahkan pada periode sebelumnya.
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                          <th className="py-3 px-3 w-14">NO</th>
-                          <th className="py-3 px-3">NAMA PERIODE</th>
-                          <th className="py-3 px-3">NOMOR DOKUMEN</th>
-                          <th className="py-3 px-3">JUMLAH LULUSAN</th>
-                          <th className="py-3 px-3 text-right">AKSI</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 text-xs sm:text-sm">
-                        {filteredHistory.map((item, idx) => (
-                          <tr key={item.id} className="hover:bg-slate-50/70 transition">
-                            <td className="py-4 px-3 font-semibold text-slate-500">
-                              {String(idx + 1).padStart(2, '0')}
-                            </td>
-                            <td className="py-4 px-3">
-                              <p className="font-bold text-gray-900">{item.periode}</p>
-                              <p className="text-[11px] text-slate-600 mt-0.5">
-                                Disetujui: {item.approvedDate}
-                              </p>
-                            </td>
-                            <td className="py-4 px-3 text-slate-700 font-normal">{item.docNumber}</td>
-                            <td className="py-4 px-3 font-medium text-gray-800">
-                              {item.students.length} Mahasiswa
-                            </td>
-                            <td className="py-4 px-3 text-right">
-                              <button
-                                type="button"
-                                onClick={() => setPreviewHistoryDoc(item)}
-                                className="inline-flex items-center gap-1.5 rounded-xl bg-[#142F57] px-4 py-2 text-xs font-semibold text-white hover:bg-[#0B1E38] transition shadow-2xs"
-                              >
-                                <Eye size={14} /> Lihat
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="flex items-center justify-between border-t border-slate-100 pt-4 text-xs text-slate-500">
-                    <span>Menampilkan {filteredHistory.length} periode</span>
-                    <div className="inline-flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-                      >
-                        <ChevronLeft size={15} />
-                      </button>
-                      <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-[#EEF3FA] font-bold text-gray-900">
-                        1
-                      </span>
-                      <button
-                        type="button"
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-                      >
-                        <ChevronRight size={15} />
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
           )}
 
         </div>
@@ -792,6 +998,7 @@ export default function KaprodiBeritaAcaraPage() {
 
               <button
                 type="button"
+                disabled={submitting}
                 onClick={() => setReturnModalOpen(false)}
                 className="text-slate-400 hover:text-gray-700 transition"
               >
@@ -817,16 +1024,19 @@ export default function KaprodiBeritaAcaraPage() {
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button
                   type="button"
+                  disabled={submitting}
                   onClick={() => setReturnModalOpen(false)}
-                  className="rounded-xl bg-[#F1F5F9] px-5 py-2.5 text-xs font-semibold text-gray-700 hover:bg-slate-200 transition"
+                  className="rounded-xl bg-[#F1F5F9] px-5 py-2.5 text-xs font-semibold text-gray-700 hover:bg-slate-200 transition disabled:opacity-50"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#C0392B] px-5 py-2.5 text-xs font-semibold text-white hover:bg-red-800 transition shadow-xs"
+                  disabled={submitting}
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#C0392B] px-5 py-2.5 text-xs font-semibold text-white hover:bg-red-800 transition shadow-xs disabled:opacity-60"
                 >
-                  <Send size={14} /> Kirim Catatan Revisi
+                  {submitting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                  {submitting ? 'Mengirim...' : 'Kirim Catatan Revisi'}
                 </button>
               </div>
             </form>
@@ -844,6 +1054,7 @@ export default function KaprodiBeritaAcaraPage() {
 
               <button
                 type="button"
+                disabled={submitting}
                 onClick={() => setApproveModalOpen(false)}
                 className="text-slate-400 hover:text-gray-700 transition p-1"
               >
@@ -867,17 +1078,17 @@ export default function KaprodiBeritaAcaraPage() {
             <div className="rounded-2xl border border-slate-200/80 bg-[#F8FAFC] p-4 space-y-3 text-xs sm:text-[13px]">
               <div className="flex items-center justify-between">
                 <span className="text-slate-500">Periode Yudisium</span>
-                <span className="font-bold text-gray-900">{activeDraft?.periode}</span>
+                <span className="font-bold text-gray-900">{activeDraftDetail?.periode}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-500">Nomor Dokumen</span>
-                <span className="font-semibold text-gray-800">{activeDraft?.docNumber}</span>
+                <span className="font-semibold text-gray-800">{activeDraftDetail?.docNumber}</span>
               </div>
               <div className="h-px bg-slate-200/80" />
               <div className="flex items-center justify-between">
                 <span className="text-slate-500">Total Mahasiswa Lulusan</span>
                 <span className="inline-block rounded-full border border-[#A7F3D0] bg-[#ECFDF5] px-3 py-0.5 text-xs font-bold text-[#15803D]">
-                  {activeDraft?.students.length || 0} Mahasiswa
+                  {activeDraftDetail?.students.length || 0} Mahasiswa
                 </span>
               </div>
             </div>
@@ -886,17 +1097,20 @@ export default function KaprodiBeritaAcaraPage() {
             <div className="flex items-center justify-end gap-3 pt-1">
               <button
                 type="button"
+                disabled={submitting}
                 onClick={() => setApproveModalOpen(false)}
-                className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-xs font-semibold text-gray-700 hover:bg-slate-50 transition"
+                className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-xs font-semibold text-gray-700 hover:bg-slate-50 transition disabled:opacity-50"
               >
                 Batal
               </button>
               <button
                 type="button"
+                disabled={submitting}
                 onClick={handleConfirmApprove}
-                className="inline-flex items-center gap-2 rounded-xl bg-[#3D8B5E] px-5 py-2.5 text-xs font-semibold text-white hover:bg-[#32754E] transition shadow-xs"
+                className="inline-flex items-center gap-2 rounded-xl bg-[#3D8B5E] px-5 py-2.5 text-xs font-semibold text-white hover:bg-[#32754E] transition shadow-xs disabled:opacity-60"
               >
-                Ya, Setujui &amp; Tanda Tangani <Check size={15} strokeWidth={2.4} />
+                {submitting ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} strokeWidth={2.4} />}
+                {submitting ? 'Menyimpan...' : 'Ya, Setujui & Tanda Tangani'}
               </button>
             </div>
           </div>
@@ -918,18 +1132,22 @@ export default function KaprodiBeritaAcaraPage() {
               </div>
 
               <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleDownloadAssetPdf(
-                      previewHistoryDoc.pdfFile,
-                      `Berita_Acara_${prodiCode}_${previewHistoryDoc.periode.replace(/\s+/g, '_')}.pdf`
-                    )
-                  }
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#142F57] px-4 py-2 text-xs font-semibold text-white hover:bg-[#0B1E38] transition shadow-2xs"
-                >
-                  <Download size={14} /> Unduh Berita Acara (PDF)
-                </button>
+                {previewHistoryDoc.status === 'completed' && (
+                  <button
+                    type="button"
+                    disabled={downloadingPdf}
+                    onClick={() =>
+                      handleExportOfficialPdf(
+                        previewHistoryDoc.id,
+                        `Berita_Acara_${prodiCode}_${previewHistoryDoc.periode.replace(/\s+/g, '_')}.pdf`
+                      )
+                    }
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#142F57] px-4 py-2 text-xs font-semibold text-white hover:bg-[#0B1E38] transition shadow-2xs disabled:opacity-60"
+                  >
+                    {downloadingPdf ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                    {downloadingPdf ? 'Mengunduh...' : 'Unduh Berita Acara (PDF)'}
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -941,14 +1159,25 @@ export default function KaprodiBeritaAcaraPage() {
               </div>
             </div>
 
-            {/* PDF Viewer */}
+            {/* Preview Viewer */}
             <div className="flex-1 overflow-y-auto bg-[#F4F7FB] p-4 sm:p-6">
               <div className="h-[68vh] w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs">
-                <iframe
-                  src={`${previewHistoryDoc.pdfFile}#toolbar=0&navpanes=0&scrollbar=1`}
-                  title={`Pratinjau ${previewHistoryDoc.periode}`}
-                  className="h-full w-full border-0"
-                />
+                {loadingHistoryPreview ? (
+                  <div className="flex h-full items-center justify-center">
+                    <Loader2 size={26} className="animate-spin text-[#142F57]" />
+                    <span className="ml-3 text-xs font-medium text-slate-600">Memuat pratinjau dokumen...</span>
+                  </div>
+                ) : historyPreviewHtml ? (
+                  <iframe
+                    srcDoc={historyPreviewHtml}
+                    title={`Pratinjau ${previewHistoryDoc.periode}`}
+                    className="h-full w-full border-0"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-xs text-slate-500">
+                    Pratinjau dokumen belum tersedia.
+                  </div>
+                )}
               </div>
             </div>
           </div>

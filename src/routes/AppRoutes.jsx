@@ -47,27 +47,35 @@ function AppRoutes() {
       <Route path="/pengajuan-yudisium/edit" element={<FormEditPengajuanPage />} />
       <Route path="/berita-acara" element={<BeritaAcaraPage />} />
 
-      {/* Kaprodi Routes */}
-      <Route path="/kaprodi/dashboard" element={<ApproverDashboardPage />} />
-      <Route path="/kaprodi/berita-acara" element={<KaprodiBeritaAcaraPage />} />
-      <Route path="/kaprodi/panduan" element={<ApproverPanduanPage />} />
-      <Route path="/kaprodi/profile" element={<ApproverProfilePage />} />
+     {/* Kaprodi Routes */}
+      <Route element={<ProtectedRoute allowedRole="kaprodi" />}>
+        <Route path="/kaprodi/dashboard" element={<ApproverDashboardPage />} />
+        <Route path="/kaprodi/berita-acara" element={<KaprodiBeritaAcaraPage />} />
+        <Route path="/kaprodi/panduan" element={<ApproverPanduanPage />} />
+        <Route path="/kaprodi/profile" element={<ApproverProfilePage />} />
+      </Route>
 
       {/* Manit Routes */}
-      <Route path="/manit/dashboard" element={<ApproverDashboardPage />} />
-      <Route path="/manit/berita-acara" element={<ManitBeritaAcaraPage />} />
-      <Route path="/manit/panduan" element={<ApproverPanduanPage />} />
-      <Route path="/manit/profile" element={<ApproverProfilePage />} />
+      <Route element={<ProtectedRoute allowedRole="manit" />}>
+        <Route path="/manit/dashboard" element={<ApproverDashboardPage />} />
+        <Route path="/manit/berita-acara" element={<ManitBeritaAcaraPage />} />
+        <Route path="/manit/panduan" element={<ApproverPanduanPage />} />
+        <Route path="/manit/profile" element={<ApproverProfilePage />} />
+      </Route>
 
       {/* Kadep Routes */}
-      <Route path="/kadep/dashboard" element={<ApproverDashboardPage />} />
-      <Route path="/kadep/berita-acara" element={<KadepBeritaAcaraPage />} />
-      <Route path="/kadep/panduan" element={<ApproverPanduanPage />} />
-      <Route path="/kadep/profile" element={<ApproverProfilePage />} />
+      <Route element={<ProtectedRoute allowedRole="kadep" />}>
+        <Route path="/kadep/dashboard" element={<ApproverDashboardPage />} />
+        <Route path="/kadep/berita-acara" element={<KadepBeritaAcaraPage />} />
+        <Route path="/kadep/panduan" element={<ApproverPanduanPage />} />
+        <Route path="/kadep/profile" element={<ApproverProfilePage />} />
+      </Route>
 
       {/* Shared Approver Generic Routes */}
-      <Route path="/approver/panduan" element={<ApproverPanduanPage />} />
-      <Route path="/approver/profile" element={<ApproverProfilePage />} />
+      <Route element={<ProtectedRoute allowedRole="approver" />}>
+        <Route path="/approver/panduan" element={<ApproverPanduanPage />} />
+        <Route path="/approver/profile" element={<ApproverProfilePage />} />
+      </Route>
 
       {/* Staf Admin Routes */}
       <Route element={<ProtectedRoute allowedRole="staf" />}>
