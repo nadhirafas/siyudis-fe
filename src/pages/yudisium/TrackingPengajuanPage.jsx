@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Home,
@@ -20,38 +20,36 @@ import {
   Menu,
   X,
   Image as ImageIcon,
+  Loader2,
 } from 'lucide-react'
 
-import { getUser, clearUser } from '../../services/auth'
+import { clearUser, logout } from '../../services/auth'
+import { fileUrl } from '../../services/api'
+import { formatDate } from '../../services/normalize'
+import { getActiveForm } from '../../services/mahasiswaApi'
+import {
+  cleanNim,
+  formatBytes,
+  isFileType,
+  normalizeActiveForm,
+  trackingDates,
+  trackingState,
+} from '../../services/mahasiswaStatus'
+import useCurrentUser from '../../hooks/useCurrentUser'
+import useMyPengajuan from '../../hooks/useMyPengajuan'
 import ugmLogo from '../../assets/ugm-logo.png'
-import profilePhoto from '../../assets/pasfoto.png'
+import fallbackPhoto from '../../assets/pasfoto.png'
 
-const uploadedDocuments = [
-  { no: '01', title: 'Form Pengajuan Yudisium', fileName: 'Form_Pengajuan_Yudisium_Raihananta.pdf', size: '340 KB', date: '14 Nov 09:12', type: 'pdf' },
-  { no: '02', title: 'Form Pembatalan Mata Kuliah Pilihan', fileName: 'Form_Pembatalan_MK_Pilihan.pdf', size: '215 KB', date: '14 Nov 09:15', type: 'pdf' },
-  { no: '03', title: 'Form Checklist Judul Proyek Akhir', fileName: 'Checklist_Judul_TA_Signed.pdf', size: '410 KB', date: '14 Nov 09:18', type: 'pdf' },
-  { no: '04', title: 'Pas Photo 4×6 Latar Biru', fileName: 'Pasfoto_4x6_Raihananta.png', size: '1.2 MB', date: '14 Nov 09:20', type: 'img' },
-  { no: '05', title: 'Transkrip Nilai Sementara', fileName: 'Transkrip_Nilai_Sementara_Simaster.pdf', size: '650 KB', date: '14 Nov 09:22', type: 'pdf' },
-  { no: '06', title: 'Surat Tanda Terima Menyerahkan Skripsi & Bebas Perpustakaan UGM', fileName: 'Bebas_Perpustakaan_UGM.pdf', size: '480 KB', date: '14 Nov 09:25', type: 'pdf' },
-  { no: '07', title: 'Ijazah Terakhir', fileName: 'Ijazah_SMA_SMK_Legalisir.pdf', size: '890 KB', date: '14 Nov 09:28', type: 'pdf' },
-  { no: '08', title: 'Sertifikat PPSMB', fileName: 'Sertifikat_PPSMB_Pionir.pdf', size: '720 KB', date: '14 Nov 09:30', type: 'pdf' },
-  { no: '09', title: 'Hasil Cek Plagiasi Turnitin', fileName: 'Hasil_Cek_Plagiasi_Turnitin_14%.pdf', size: '1.1 MB', date: '14 Nov 09:33', type: 'pdf' },
-  { no: '10', title: 'Sertifikat Kemampuan Bahasa Inggris', fileName: 'Sertifikat_AcEPT_UGM_Skor268.pdf', size: '530 KB', date: '14 Nov 09:35', type: 'pdf' },
-  { no: '11', title: 'Sertifikat Kompetensi Bidang', fileName: 'Sertifikat_Kompetensi_BNSP_JuniorWebDev.pdf', size: '1.4 MB', date: '14 Nov 09:38', type: 'pdf' },
-  { no: '12', title: 'Lembar Halaman Pengesahan', fileName: 'Lembar_Pengesahan_TA_Asli.pdf', size: '1.8 MB', date: '14 Nov 09:40', type: 'pdf' },
-  { no: '13', title: 'Unggah Draft Publikasi/Makalah', fileName: 'Draft_Publikasi_Jurnal_Sinta2.pdf', size: '2.4 MB', date: '14 Nov 09:42', type: 'pdf' },
-  { no: '14', title: 'Transkrip Nilai D3', fileName: 'Tidak Berlaku', size: '', date: 'Mahasiswa Jalur Reguler', type: 'disabled' },
-  { no: '15', title: 'Surat Bebas Lab', fileName: 'Surat_Bebas_Lab_DTEDI.pdf', size: '310 KB', date: '14 Nov 09:45', type: 'pdf' },
-]
-
+// Tanggal tiap langkah diisi dari data API (tanggal pengajuan); langkah lain belum punya tanggal di API.
+// TODO: endpoint belum ada — riwayat tanggal per tahap (verifikasi, validasi, TTE) belum tersedia.
 const timelineStepsData = [
-  { id: 1, title: 'Pengajuan Yudisium', desc: 'Unggah berkas persyaratan', date: '21 Okt 2026' },
-  { id: 2, title: 'Verifikasi Pengajuan Yudisium', desc: 'Staf akademik memeriksa berkas', date: '23 Okt 2026' },
-  { id: 3, title: 'Verifikasi Draft Berita Acara', desc: 'Anda memeriksa data draft BA', date: '25 Okt 2026' },
-  { id: 4, title: 'Validasi Kaprodi', desc: 'Review & persetujuan', date: '26 Okt 2026' },
-  { id: 5, title: 'Pengesahan Manit', desc: 'TTE Manit setelah Kaprodi', date: '27 Okt 2026' },
-  { id: 6, title: 'Pengesahan Kadep', desc: 'TTE Kadep setelah Manit', date: '28 Okt 2026' },
-  { id: 7, title: 'Penerbitan Berita Acara Final', desc: 'Berita Acara sah TTE siap unduh', date: '28 Okt 2026' },
+  { id: 1, title: 'Pengajuan Yudisium', desc: 'Unggah berkas persyaratan' },
+  { id: 2, title: 'Verifikasi Pengajuan Yudisium', desc: 'Staf akademik memeriksa berkas' },
+  { id: 3, title: 'Verifikasi Draft Berita Acara', desc: 'Anda memeriksa data draft BA' },
+  { id: 4, title: 'Validasi Kaprodi', desc: 'Review & persetujuan' },
+  { id: 5, title: 'Pengesahan Manit', desc: 'TTE Manit setelah Kaprodi' },
+  { id: 6, title: 'Pengesahan Kadep', desc: 'TTE Kadep setelah Manit' },
+  { id: 7, title: 'Penerbitan Berita Acara Final', desc: 'Berita Acara sah TTE siap unduh' },
 ]
 
 const PdfIcon = () => (
@@ -146,13 +144,28 @@ function Sidebar({ isOpen, onClose }) {
   )
 }
 
-function Header({ onToggleSidebar }) {
+function Header({ onToggleSidebar, user }) {
   const navigate = useNavigate()
-  const [user] = useState(() => getUser() || { name: 'Raihananta Khoiril Anam Pitoyo', email: 'raihananta.k@mail.ugm.ac.id' })
   const [profileOpen, setProfileOpen] = useState(false)
 
-  const displayName = user?.name || 'Raihananta Khoiril Anam Pitoyo'
-  const email = user?.email || 'raihananta.k@mail.ugm.ac.id'
+  const displayName = user?.nama || user?.name || 'Mahasiswa'
+  const email = user?.email || '-'
+  const savedPhoto =
+    localStorage.getItem(`profile_photo_${email}`) ||
+    user?.avatar ||
+    user?.photo ||
+    user?.foto ||
+    null
+
+  const handleLogout = async () => {
+    try {
+      await logout()
+    } catch {
+      clearUser()
+    }
+    setProfileOpen(false)
+    navigate('/')
+  }
 
   const DefaultAvatarIcon = () => (
     <div className="relative h-full w-full rounded-full bg-[#c7cbd1] flex items-center justify-center overflow-hidden">
@@ -184,9 +197,13 @@ function Header({ onToggleSidebar }) {
           onClick={() => setProfileOpen((open) => !open)}
           className="flex items-center gap-2 rounded-full py-1 px-1.5 hover:bg-gray-50 transition"
         >
-          <div className="h-9 w-9 sm:h-10 sm:w-10 shrink-0">
-            <DefaultAvatarIcon />
-          </div>
+          {savedPhoto ? (
+            <img src={savedPhoto} alt="" className="h-9 w-9 sm:h-10 sm:w-10 rounded-full object-cover" />
+          ) : (
+            <div className="h-9 w-9 sm:h-10 sm:w-10 shrink-0">
+              <DefaultAvatarIcon />
+            </div>
+          )}
           <span className="hidden md:inline text-[15px] font-bold text-gray-900 tracking-tight">{displayName}</span>
         </button>
 
@@ -198,7 +215,11 @@ function Header({ onToggleSidebar }) {
             <div className="flex flex-col items-center py-5">
               <div className="relative flex items-center justify-center">
                 <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-full border-[5px] border-[#e8edf5] bg-[#c7cbd1] flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
-                  <DefaultAvatarIcon />
+                  {savedPhoto ? (
+                    <img src={savedPhoto} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <DefaultAvatarIcon />
+                  )}
                 </div>
                 <span className="absolute bottom-0.5 right-0.5 h-4 w-4 sm:h-5 sm:w-5 rounded-full border-[2.5px] border-white bg-[#5dbb67]" />
               </div>
@@ -207,7 +228,7 @@ function Header({ onToggleSidebar }) {
             <div className="border-t border-gray-100 pt-3 space-y-1.5">
               <button
                 type="button"
-                onClick={() => { setProfileOpen(false); navigate('/profile') }}
+                onClick={(e) => { e.stopPropagation(); setProfileOpen(false); navigate('/profile') }}
                 className="flex w-full items-center gap-4 rounded-xl p-2.5 text-left hover:bg-gray-50 transition"
               >
                 <span className="flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-2xl bg-[#eef4ff] text-[#163b6c]">
@@ -221,7 +242,7 @@ function Header({ onToggleSidebar }) {
               <div className="border-t border-gray-100 my-1" />
               <button
                 type="button"
-                onClick={() => { clearUser(); setProfileOpen(false); navigate('/') }}
+                onClick={handleLogout}
                 className="flex w-full items-center gap-4 rounded-xl p-2.5 text-left hover:bg-red-50/60 transition"
               >
                 <span className="flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-2xl bg-[#fde8e7] text-[#d9362b]">
@@ -243,19 +264,93 @@ function Header({ onToggleSidebar }) {
 export default function TrackingPengajuanPage() {
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  
-  // STATE TRACKING STATUS: 'normal' | 'revisi' | 'disetujui'
-  const [status] = useState('revisi') 
 
-  const currentActiveStep = status === 'disetujui' ? 7 : 2
+  // Data akun (GET /me) dan pengajuan milik mahasiswa (GET /pengajuan/me)
+  const user = useCurrentUser()
+  const { pengajuan, loading, error } = useMyPengajuan()
+  const [fieldNames, setFieldNames] = useState({})
+
+  // Belum pernah mengajukan -> arahkan ke formulir
+  useEffect(() => {
+    if (!loading && !error && !pengajuan) navigate('/pengajuan-yudisium', { replace: true })
+  }, [loading, error, pengajuan, navigate])
+
+  // Nama field dari form aktif (cadangan bila /pengajuan/me tidak menyertakan nama field)
+  useEffect(() => {
+    let cancelled = false
+    getActiveForm()
+      .then((raw) => {
+        const form = normalizeActiveForm(raw)
+        if (cancelled || !form) return
+        const map = {}
+        form.fields.forEach((f) => {
+          map[f.id] = f
+        })
+        setFieldNames(map)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const { step: currentActiveStep, mode: status, canEdit } = trackingState(pengajuan)
+  const dates = trackingDates(pengajuan)
+
+  const displayName = user?.nama || user?.name || 'Mahasiswa'
+  const nim = cleanNim(user?.nomor_induk || user?.nim) || '-'
+  const prodi = user?.prodiNama || user?.program_studi?.nama || '-'
+
+  // Pisahkan isian teks (dosen, WhatsApp, link video, dst.) dari berkas unggahan
+  const { uploadedDocuments, extraFields } = useMemo(() => {
+    const docs = []
+    const extras = []
+    ;(pengajuan?.fieldValues ?? []).forEach((fv, idx) => {
+      const def = fieldNames[fv.fieldId]
+      const type = fv.type || def?.type || ''
+      const title = fv.name || def?.name || `Isian ${idx + 1}`
+      const value = String(fv.value ?? '')
+      const looksLikeFile = /\.(pdf|png|jpe?g)(\?.*)?$/i.test(value)
+      if (isFileType(type) || looksLikeFile) {
+        const fileName = fv.fileName || decodeURIComponent(value.split('/').pop() || 'berkas')
+        docs.push({
+          no: String(docs.length + 1).padStart(2, '0'),
+          title,
+          fileName,
+          size: formatBytes(fv.size),
+          date: fv.uploadedAt ? formatDate(fv.uploadedAt, true) : '',
+          type: /\.(png|jpe?g)(\?.*)?$/i.test(value) ? 'img' : 'pdf',
+          url: fileUrl(value),
+        })
+      } else if (value) {
+        extras.push({ key: fv.key, title: title.toUpperCase(), value, isUrl: /^https?:\/\//i.test(value) })
+      }
+    })
+    return { uploadedDocuments: docs, extraFields: extras }
+  }, [pengajuan, fieldNames])
+
+  // Pas foto = berkas gambar yang judulnya memuat "foto"; bila tidak ada pakai gambar bawaan
+  const photoSrc =
+    uploadedDocuments.find((d) => d.type === 'img' && /foto/i.test(d.title))?.url || fallbackPhoto
 
   return (
     <div className="min-h-screen bg-[#EEF3F8] text-[#111827]">
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <Header onToggleSidebar={() => setSidebarOpen((open) => !open)} />
+      <Header onToggleSidebar={() => setSidebarOpen((open) => !open)} user={user} />
 
       <main className="lg:ml-[272px] pt-[76px] lg:pt-[88px] pb-16">
         <div className="mx-auto max-w-[1120px] px-4 sm:px-8 py-6 sm:py-8 space-y-6 sm:space-y-7">
+          {loading && (
+            <div className="flex items-center gap-2 rounded-2xl bg-white p-4 text-sm text-slate-500 shadow-sm">
+              <Loader2 size={16} className="animate-spin" /> Memuat data pengajuan...
+            </div>
+          )}
+          {error && (
+            <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+              <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
           
           {/* ========================================================= */}
           {/* 1. SECTION PELACAKAN PROGRES YUDISIUM                     */}
@@ -274,26 +369,17 @@ export default function TrackingPengajuanPage() {
                 </div>
               </div>
 
-              {/* BUTTON EDIT / PERBAIKAN PENGAJUAN */}
-              {status === 'revisi' ? (
+              {/* BUTTON EDIT PENGAJUAN — API hanya mengizinkan revisi selama status masih 'submitted' */}
+              {canEdit && (
                 <button
                   type="button"
                   onClick={() => navigate('/pengajuan-yudisium/edit')}
-                  className="flex items-center justify-center gap-2 rounded-2xl border border-[#C27803] bg-[#FFFDF5] px-5 py-2.5 text-sm font-semibold text-[#A05E03] shadow-2xs hover:bg-[#FDF3D6] transition w-full sm:w-auto"
-                >
-                  <Pencil size={16} className="text-[#A05E03]" />
-                  <span>Perbaiki Pengajuan Yudisium</span>
-                </button>
-              ) : status !== 'disetujui' ? (
-                <button
-                  type="button"
-                  onClick={() => navigate('/pengajuan-yudisium/edit')}
-                  className="flex items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-800 shadow-2xs hover:bg-slate-50 transition w-full sm:w-auto"
+                  className="flex items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-800 shadow-2xs hover:bg-slate-50 transition"
                 >
                   <Pencil size={16} className="text-slate-800" />
                   <span>Edit Pengajuan Yudisium</span>
                 </button>
-              ) : null}
+              )}
             </div>
 
             {/* TIMELINE STEPS */}
@@ -373,7 +459,7 @@ export default function TrackingPengajuanPage() {
                       </div>
 
                       <div className="h-[20px] flex items-center justify-center">
-                        {isCompleted && <span className="text-[10px] text-slate-700 font-medium">{step.date}</span>}
+                        {isCompleted && dates[step.id] && <span className="text-[10px] text-slate-700 font-medium">{dates[step.id]}</span>}
                       </div>
                     </div>
                   )
@@ -447,7 +533,7 @@ export default function TrackingPengajuanPage() {
                         </div>
                       </div>
                       <p className={`text-xs mt-0.5 ${isCompleted ? 'text-slate-600' : 'text-slate-400'}`}>{step.desc}</p>
-                      {isCompleted && <p className="text-[10px] text-slate-500 font-medium mt-1">{step.date}</p>}
+                      {isCompleted && <p className="text-[10px] text-slate-500 font-medium mt-1">{dates[step.id] || ''}</p>}
                     </div>
                   </div>
                 )
@@ -462,11 +548,16 @@ export default function TrackingPengajuanPage() {
                 </div>
                 <div>
                   <h4 className="text-sm sm:text-base font-bold text-slate-900">
-                    Pengajuan Yudisium Anda Dikembalikan oleh Staf Akademik
+                    Permintaan Revisi Data Anda Sedang Ditinjau Staf Akademik
                   </h4>
                   <p className="mt-1 text-xs sm:text-sm text-slate-600 leading-relaxed">
-                    Terdapat hal yang perlu diperbaiki pada pengajuan yudisium Anda:<br />
-                    <span className="font-normal text-slate-700">(1) Pas Foto tidak terlihat jelas, dan (2) NIM tidak sesuai dengan SIMASTER</span>
+                    Staf akademik akan memperbaiki data penilaian sesuai catatan Anda, lalu mengirim ulang konfirmasi.
+                    {pengajuan?.catatan && (
+                      <>
+                        <br />
+                        <span className="font-normal text-slate-700">{pengajuan.catatan}</span>
+                      </>
+                    )}
                   </p>
                 </div>
               </div>
@@ -569,7 +660,7 @@ export default function TrackingPengajuanPage() {
           </section>
 
           {/* ========================================================= */}
-          {/* 2. SECTION IDENTITAS DIRI                                  */}
+          {/* 2. SECTION IDENTITAS DIRI                                 */}
           {/* ========================================================= */}
           <section className="rounded-2xl bg-white shadow-sm border border-slate-100 overflow-hidden">
             <div className="bg-[#F4F7FC] px-5 sm:px-8 py-4 sm:py-5 border-b border-slate-100">
@@ -579,56 +670,56 @@ export default function TrackingPengajuanPage() {
             <div className="p-5 sm:p-8 space-y-6">
               <div className="flex flex-col md:flex-row gap-6 sm:gap-8 items-start">
                 <img
-                  src={profilePhoto}
-                  alt="Pasfoto Raihananta"
+                  src={photoSrc}
+                  alt={`Pasfoto ${displayName}`}
                   className="h-[180px] w-[140px] rounded-2xl object-cover shadow-xs shrink-0 border border-slate-100 mx-auto md:mx-0"
                 />
 
                 <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6 w-full pt-1">
                   <div>
                     <p className="text-[11px] font-bold tracking-wider text-slate-400 uppercase">NAMA LENGKAP</p>
-                    <p className="mt-1 text-base sm:text-lg font-bold text-slate-900">Raihananta Khoiril Anam Pitoyo</p>
+                    <p className="mt-1 text-base sm:text-lg font-bold text-slate-900">{displayName}</p>
                   </div>
                   <div>
                     <p className="text-[11px] font-bold tracking-wider text-slate-400 uppercase">NOMOR INDUK MAHASISWA (NIM)</p>
-                    <p className="mt-1 text-base sm:text-lg font-bold text-[#1b345f]">24/542538/SV/25053</p>
+                    <p className="mt-1 text-base sm:text-lg font-bold text-[#1b345f]">{nim}</p>
                   </div>
                   <div>
                     <p className="text-[11px] font-bold tracking-wider text-slate-400 uppercase">PROGRAM STUDI</p>
-                    <p className="mt-1 text-sm sm:text-base font-bold text-slate-900">Sarjana Terapan Teknologi Rekayasa Perangkat Lunak</p>
+                    <p className="mt-1 text-sm sm:text-base font-bold text-slate-900">{prodi}</p>
                   </div>
                 </div>
               </div>
 
-              <div className="border-t border-slate-100 pt-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="rounded-2xl bg-[#F8FAFC] p-4 border border-slate-100">
-                    <p className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">DOSEN PEMBIMBING PROYEK AKHIR</p>
-                    <p className="mt-1 text-sm font-bold text-slate-900">Dr. Ir. Budi Santoso, M.T.</p>
-                  </div>
-                  <div className="rounded-2xl bg-[#F8FAFC] p-4 border border-slate-100">
-                    <p className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">NOMOR WHATSAPP AKTIF MAHASISWA</p>
-                    <p className="mt-1 text-sm font-bold text-slate-900">+62 81234567890</p>
-                  </div>
-                  <div className="rounded-2xl bg-[#F8FAFC] p-4 border border-slate-100">
-                    <p className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">TAUTAN (LINK) VIDEO PRESENTASI TUGAS AKHIR</p>
-                    <a
-                      href="https://youtube.com/video-presentasi"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-[#C8392B] hover:underline"
-                    >
-                      <PlayCircle size={16} className="text-[#C8392B] shrink-0" />
-                      <span className="truncate">youtube.com/video-presentasi</span>
-                    </a>
+              {extraFields.length > 0 && (
+                <div className="border-t border-slate-100 pt-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {extraFields.map((f) => (
+                      <div key={f.key} className="rounded-2xl bg-[#F8FAFC] p-4 border border-slate-100">
+                        <p className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">{f.title}</p>
+                        {f.isUrl ? (
+                          <a
+                            href={f.value}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-[#C8392B] hover:underline"
+                          >
+                            <PlayCircle size={16} className="text-[#C8392B] shrink-0" />
+                            <span className="truncate">{f.value.replace(/^https?:\/\//i, '')}</span>
+                          </a>
+                        ) : (
+                          <p className="mt-1 text-sm font-bold text-slate-900">{f.value}</p>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           </section>
 
           {/* ========================================================= */}
-          {/* 3. SECTION DOKUMEN PERSYARATAN TERUNGGAH                   */}
+          {/* 3. SECTION DOKUMEN PERSYARATAN TERUNGGAH                  */}
           {/* ========================================================= */}
           <section className="rounded-2xl bg-white shadow-sm border border-slate-100 overflow-hidden">
             <div className="bg-[#F4F7FC] px-5 sm:px-8 py-4 sm:py-5 border-b border-slate-100">
@@ -645,6 +736,13 @@ export default function TrackingPengajuanPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-sm">
+                  {!loading && uploadedDocuments.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="py-8 px-6 text-center text-sm text-slate-400">
+                        Belum ada berkas yang tercatat pada pengajuan ini.
+                      </td>
+                    </tr>
+                  )}
                   {uploadedDocuments.map((doc) => (
                     <tr key={doc.no} className="hover:bg-slate-50/60 transition">
                       <td className="py-4 px-6 sm:px-8 font-bold text-slate-400">{doc.no}</td>
@@ -667,7 +765,7 @@ export default function TrackingPengajuanPage() {
                           </div>
                         ) : (
                           <a
-                            href={`https://siyudis.dtedi.ugm.ac.id/files/${doc.fileName}`}
+                            href={doc.url}
                             target="_blank"
                             rel="noreferrer"
                             className="group inline-flex items-center gap-3 hover:underline"
@@ -684,7 +782,7 @@ export default function TrackingPengajuanPage() {
                                 {doc.fileName}
                               </p>
                               <p className="text-[11px] text-slate-400 mt-0.5">
-                                {doc.size} • {doc.date}
+                                {[doc.size, doc.date].filter(Boolean).join(' • ')}
                               </p>
                             </div>
                           </a>

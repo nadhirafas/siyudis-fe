@@ -21,6 +21,7 @@ import AdminPanduan from '../pages/admin/AdminPanduan'
 
 import ManagementRole from '../pages/super-admin/ManagementRole'
 import FormManagement from '../pages/super-admin/FormManagement'
+import RiwayatPerubahan from '../pages/super-admin/RiwayatPerubahan'
 import TemplateBeritaAcara from '../pages/super-admin/TemplateBeritaAcara'
 
 import ApproverDashboardPage from '../pages/approver/ApproverDashboardPage'
@@ -68,6 +69,7 @@ function AppRoutes() {
       {/* Staf Admin Routes */}
       <Route element={<ProtectedRoute allowedRole="staf" />}>
         <Route path="/admin/dashboard" element={<AdminDashboard />} />
+        <Route path="/admin/profile" element={<ProfilePage />} />
         <Route path="/admin/pengajuan-yudisium" element={<AdminPengajuanYudisium />} />
         <Route path="/admin/berita-acara" element={<BeritaAcara />} />
         <Route path="/admin/panduan" element={<AdminPanduan />} />
@@ -76,12 +78,14 @@ function AppRoutes() {
       {/* Super Admin Routes */}
       <Route element={<ProtectedRoute allowedRole="super_admin" />}>
         <Route path="/super-admin/dashboard" element={<AdminDashboard />} />
+        <Route path="/super-admin/profile" element={<ProfilePage />} />
         <Route path="/super-admin/pengajuan-yudisium" element={<AdminPengajuanYudisium />} />
         <Route path="/super-admin/berita-acara" element={<BeritaAcara />} />
         <Route path="/super-admin/panduan" element={<AdminPanduan />} />
         <Route path="/super-admin/management-role" element={<ManagementRole />} />
         <Route path="/super-admin/form-management" element={<FormManagement />} />
         <Route path="/super-admin/template-berita-acara" element={<TemplateBeritaAcara />} />
+        <Route path="/super-admin/riwayat-perubahan" element={<RiwayatPerubahan />} />
       </Route>
     </Routes>
   )

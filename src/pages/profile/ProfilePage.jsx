@@ -1,806 +1,511 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
-  ShieldCheck,
-  X,
-  Plus,
-  Search,
-  ChevronLeft,
-  ChevronRight,
-  Shield,
-  GraduationCap,
-  Users,
-  Building,
-  AlertCircle,
-  FileEdit,
+  UserRound,
+  Mail,
+  Lock,
+  Upload,
   Trash2,
+  Camera,
+  IdCard,
+  Info,
+  X,
+  Save,
+  Home,
+  FileText,
+  ShieldCheck,
+  BookOpen,
+  CheckCircle2,
+  AlertCircle,
   Loader2,
-  Check
 } from 'lucide-react'
 
 import Sidebar from '../../components/Sidebar'
 import ProfileMenu from '../../components/ProfileMenu'
-import { getUser } from '../../services/auth'
+import { getRoleName, getUser, saveUser } from '../../services/auth'
 import { errorMessage } from '../../services/api'
-import { normalizeUser, roleKey, ROLE_LABEL } from '../../services/normalize'
-import {
-  listRoles,
-  listUsers,
-  listProgramStudi,
-  createUser,
-  updateUser,
-  deleteUser,
-} from '../../services/adminApi'
+import { getProfile, updateProfile } from '../../services/mahasiswaApi'
+import { roleKey } from '../../services/normalize'
+import ugmLogo from '../../assets/ugm-logo.png'
 
+export default function ProfilePage() {
+  const navigate = useNavigate()
+  const fileInputRef = useRef(null)
 
+  const [user, setUser] = useState(() => getUser())
+  const key = roleKey(getRoleName(user) || 'mahasiswa')
+  const isAdminArea =
+    key === 'staf_akademik' ||
+    key === 'super_admin' ||
+    key === 'kaprodi' ||
+    key === 'manit' ||
+    key === 'kadep'
 
-// ==========================================
-// METADATA ROLE (deskripsi & ikon; data role & jumlah dari API)
-// ==========================================
-const ROLE_META = {
-  mahasiswa: {
-    icon: GraduationCap,
-    desc: 'Role default akun baru: form pengajuan, pantau progres, konfirmasi data',
-    tags: ['Form Pengajuan', 'Pantau Progres', 'Konfirmasi Data'],
-    note: 'Otomatis diberikan saat login pertama dengan email @mail.ugm.ac.id. Berubah hanya jika Super Admin mengubahnya.'
-  },
-  staf_akademik: {
-    icon: Users,
-    desc: 'Verifikasi berkas, input penilaian, kelola Berita Acara',
-    tags: ['Verifikasi Berkas', 'Input Penilaian', 'Kelola Berita Acara']
-  },
-  kaprodi: {
-    icon: Shield,
-    desc: 'Approval per Berita Acara, e-signature',
-    tags: ['Approval Berita Acara', 'E-Signature']
-  },
-  manit: {
-    icon: FileEdit,
-    desc: 'Approval paralel, preview tabel Berita Acara',
-    tags: ['Approval Paralel', 'Preview Tabel BA', 'E-Signature']
-  },
-  kadep: {
-    icon: Building,
-    desc: 'Approval paralel, preview tabel Berita Acara',
-    tags: ['Approval Paralel', 'Preview Tabel BA', 'E-Signature']
-  },
-  super_admin: {
-    icon: ShieldCheck,
-    desc: 'Semua akses Staf Akademik, ditambah Pengaturan Sistem',
-    tags: ['Semua Akses Staf Akademik', 'Pengaturan Sistem']
-  }
-}
-
-const inputCls =
-  'w-full rounded-xl border border-slate-200 px-3.5 py-2 text-xs outline-none focus:border-blue-500 bg-white'
-
-function ProdiSelect({ value, onChange, prodiList }) {
-  return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className={inputCls}>
-      <option value="">Semua Prodi / Tidak terikat prodi</option>
-      {prodiList.map((p) => (
-        <option key={p.id} value={p.id}>
-          {p.nama ?? p.nama_program_studi}
-        </option>
-      ))}
-    </select>
+  const [nama, setNama] = useState(user?.nama || '')
+  const [email, setEmail] = useState(user?.email || '')
+  const [photo, setPhoto] = useState(
+    () => localStorage.getItem(`profile_photo_${user?.email || 'me'}`) || user?.avatar || ''
   )
-}
+  const [initialState, setInitialState] = useState({
+    nama: user?.nama || '',
+    photo: localStorage.getItem(`profile_photo_${user?.email || 'me'}`) || user?.avatar || '',
+  })
 
-const TAB_TO_KEY = {
-  Mahasiswa: 'mahasiswa',
-  'Staf Akademik': 'staf_akademik',
-  Kaprodi: 'kaprodi',
-  Manit: 'manit',
-  Kadep: 'kadep'
-}
-
-const PAGE_SIZE = 15
-
-const EMPTY_FORM = { nama: '', email: '', role_id: '', program_studi_id: '' }
-
-// ==========================================
-// MAIN PAGE: MANAJEMEN ROLE
-// ==========================================
-export default function ManajemenRole() {
-  const currentUser = getUser()
-
-  const [users, setUsers] = useState([])
-  const [roles, setRoles] = useState([])
-  const [prodiList, setProdiList] = useState([])
   const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState('')
-  const [notice, setNotice] = useState(null) // { type: 'success' | 'error', text }
   const [saving, setSaving] = useState(false)
-
-  // Filters, search & pagination
-  const [activeTabFilter, setActiveTabFilter] = useState('Semua')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [page, setPage] = useState(1)
-
-  // Modals
-  const [isCreateOpen, setIsCreateOpen] = useState(false)
-  const [createForm, setCreateForm] = useState(EMPTY_FORM)
-  const [selectedUserModal, setSelectedUserModal] = useState(null)
-  const [editForm, setEditForm] = useState(EMPTY_FORM)
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [notice, setNotice] = useState(null) // { type: 'success' | 'error', text }
 
   const flash = (type, text) => {
     setNotice({ type, text })
     setTimeout(() => setNotice(null), 5000)
   }
 
-  const loadAll = useCallback(
-    () =>
-      Promise.all([listRoles(), listUsers(), listProgramStudi().catch(() => [])])
-        .then(([roleRes, userRes, prodiRes]) => {
-          setRoles(roleRes)
-          setUsers(userRes.map(normalizeUser))
-          setProdiList(prodiRes)
-          setLoadError('')
-        })
-        .catch((err) => setLoadError(errorMessage(err, 'Gagal memuat data pengguna')))
-        .finally(() => setLoading(false)),
-    []
-  )
-
+  // =========================================================
+  // AMBIL DATA AKUN DARI GET /api/me
+  // =========================================================
   useEffect(() => {
-    loadAll()
-  }, [loadAll])
+    let cancelled = false
+    getProfile()
+      .then((json) => {
+        if (cancelled) return
+        const raw = json || {}
+        const fetchedNama = raw.nama || raw.name || user?.nama || ''
+        const fetchedEmail = raw.email || user?.email || ''
+        const savedPhoto =
+          localStorage.getItem(`profile_photo_${fetchedEmail || 'me'}`) ||
+          raw.avatar ||
+          raw.foto ||
+          user?.avatar ||
+          ''
 
-  const initials = (name = '') =>
-    name
-      .split(' ')
-      .filter(Boolean)
-      .map((n) => n[0])
-      .join('')
-      .slice(0, 2)
-      .toUpperCase()
+        setNama(fetchedNama)
+        setEmail(fetchedEmail)
+        setPhoto(savedPhoto)
+        setInitialState({ nama: fetchedNama, photo: savedPhoto })
 
-  const prodiLabel = (u) => u.prodiKode || u.prodiNama || 'Semua Prodi'
-
-  const roleNameById = (id) => {
-    const r = roles.find((x) => String(x.id) === String(id))
-    return r ? r.name ?? r.nama ?? r.nama_role ?? '' : ''
-  }
-
-  // Kartu role dari data API + jumlah pengguna
-  const roleCards = useMemo(
-    () =>
-      roles.map((r) => {
-        const name = r.name ?? r.nama ?? r.nama_role ?? ''
-        const key = roleKey(name)
-        const meta = ROLE_META[key] || { icon: ShieldCheck, tags: [] }
-        return {
-          id: r.id,
-          key,
-          name: ROLE_LABEL[key] || name,
-          count: users.filter((u) => String(u.roleId) === String(r.id)).length,
-          ...meta
+        const merged = {
+          ...user,
+          ...raw,
+          nama: fetchedNama,
+          email: fetchedEmail,
+          avatar: savedPhoto,
         }
-      }),
-    [roles, users]
-  )
-
-  const filterCounts = useMemo(() => {
-    const counts = { Semua: users.length, Mahasiswa: 0, 'Staf Akademik': 0, Kaprodi: 0, Manit: 0, Kadep: 0 }
-    users.forEach((u) => {
-      const k = roleKey(u.roleName)
-      if (k === 'mahasiswa') counts.Mahasiswa++
-      if (k === 'staf_akademik') counts['Staf Akademik']++
-      if (k === 'kaprodi') counts.Kaprodi++
-      if (k === 'manit') counts.Manit++
-      if (k === 'kadep') counts.Kadep++
-    })
-    return counts
-  }, [users])
-
-  const filteredUsers = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim()
-    return users.filter((u) => {
-      const matchesTab = activeTabFilter === 'Semua' || roleKey(u.roleName) === TAB_TO_KEY[activeTabFilter]
-      const matchesSearch =
-        !q || u.nama.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.nim.toLowerCase().includes(q)
-      return matchesTab && matchesSearch
-    })
-  }, [users, activeTabFilter, searchQuery])
-
-  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE))
-  const safePage = Math.min(page, totalPages)
-  const pagedUsers = filteredUsers.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
-
-  // ---------- Kelola pengguna (PUT /admin/users/{id}) ----------
-  const handleOpenUserModal = (user) => {
-    setSelectedUserModal(user)
-    setEditForm({
-      nama: user.nama,
-      email: user.email,
-      role_id: user.roleId ?? '',
-      program_studi_id: user.prodiId ?? ''
-    })
-  }
-
-  const handleSaveUser = async () => {
-    if (!selectedUserModal) return
-    if (!editForm.nama.trim()) return flash('error', 'Nama wajib diisi.')
-    if (!editForm.role_id) return flash('error', 'Pilih role pengguna.')
-
-    setSaving(true)
-    try {
-      await updateUser(selectedUserModal.id, {
-        nama: editForm.nama.trim(),
-        role_id: Number(editForm.role_id),
-        program_studi_id: editForm.program_studi_id ? Number(editForm.program_studi_id) : null
+        setUser(merged)
+        saveUser(merged)
       })
-      setSelectedUserModal(null)
-      flash('success', 'Perubahan pengguna berhasil disimpan.')
-      await loadAll()
-    } catch (err) {
-      flash('error', errorMessage(err, 'Gagal menyimpan perubahan pengguna'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  // ---------- Hapus pengguna (DELETE /admin/users/{id}) ----------
-  const handleDeleteUser = async () => {
-    if (!selectedUserModal) return
-    setSaving(true)
-    try {
-      await deleteUser(selectedUserModal.id)
-      setConfirmDelete(false)
-      setSelectedUserModal(null)
-      flash('success', 'Pengguna berhasil dihapus.')
-      await loadAll()
-    } catch (err) {
-      setConfirmDelete(false)
-      flash('error', errorMessage(err, 'Gagal menghapus pengguna'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  // ---------- Tambah pengguna internal (POST /admin/users) ----------
-  const assignableRoles = roles.filter((r) => roleKey(r.name ?? r.nama ?? r.nama_role ?? '') !== 'mahasiswa')
-
-  const handleCreateUser = async () => {
-    if (!createForm.nama.trim() || !createForm.email.trim() || !createForm.role_id) {
-      return flash('error', 'Nama, email, dan role wajib diisi.')
-    }
-    setSaving(true)
-    try {
-      await createUser({
-        nama: createForm.nama.trim(),
-        email: createForm.email.trim(),
-        role_id: Number(createForm.role_id),
-        program_studi_id: createForm.program_studi_id ? Number(createForm.program_studi_id) : null
+      .catch(() => {
+        // Tetap gunakan data user dari localStorage jika offline/gagal fetch
       })
-      setIsCreateOpen(false)
-      setCreateForm(EMPTY_FORM)
-      flash('success', 'Pengguna baru berhasil ditambahkan.')
-      await loadAll()
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // =========================================================
+  // HANDLER UPLOAD & HAPUS FOTO (MAKS 2.0 MB)
+  // =========================================================
+  // TODO: endpoint belum ada — upload foto profil belum tersedia di API (avatar berasal dari Google).
+  // Foto hanya disimpan lokal di browser per akun.
+  const handleSelectPhoto = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const allowed = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
+    if (!allowed.includes(file.type)) {
+      flash('error', 'Format file harus PNG, JPG, atau WebP.')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      flash('error', 'Ukuran foto maksimal 2.0 MB.')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      setPhoto(reader.result)
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+
+  const handleRemovePhoto = () => {
+    setPhoto('')
+  }
+
+  const handleCancel = () => {
+    setNama(initialState.nama)
+    setPhoto(initialState.photo)
+    setNotice(null)
+
+    if (window.history.length > 1) {
+      navigate(-1)
+    } else {
+      navigate(isAdminArea ? '/admin' : '/dashboard', { replace: true })
+    }
+  }
+
+  // =========================================================
+  // SIMPAN PERUBAHAN KE PATCH /api/me
+  // =========================================================
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!nama.trim()) {
+      flash('error', 'Nama wajib diisi.')
+      return
+    }
+
+    setSaving(true)
+    setNotice(null)
+
+    try {
+      // PATCH /api/me — error validasi 422 dirangkum otomatis oleh errorMessage()
+      const raw = (await updateProfile({ nama: nama.trim() })) || {}
+      const updatedNama = raw.nama || nama.trim()
+
+      // Simpan foto profil lokal per email akun
+      const storageKey = `profile_photo_${email || 'me'}`
+      if (photo) {
+        localStorage.setItem(storageKey, photo)
+      } else {
+        localStorage.removeItem(storageKey)
+      }
+
+      const nextUser = {
+        ...user,
+        ...raw,
+        nama: updatedNama,
+        email,
+        avatar: photo,
+      }
+
+      setUser(nextUser)
+      saveUser(nextUser)
+      setInitialState({ nama: updatedNama, photo })
+      flash('success', 'Perubahan profil berhasil disimpan.')
     } catch (err) {
-      flash('error', errorMessage(err, 'Gagal menambahkan pengguna'))
+      flash('error', errorMessage(err, 'Gagal menyimpan perubahan profil'))
     } finally {
       setSaving(false)
     }
   }
+
+  const displayName = nama || user?.nama || 'Mahasiswa'
 
   return (
-    <div className="min-h-screen bg-[#F0F4F8] font-sans text-slate-800">
-      <Sidebar admin />
+    <div className="min-h-screen bg-[#F0F4F8] text-[#111827]">
+      {/* SIDEBAR */}
+      {isAdminArea ? (
+        <Sidebar admin />
+      ) : (
+        <StudentSidebar navigate={navigate} />
+      )}
 
-      <div className="min-h-screen lg:pl-[295px]">
-        {/* HEADER TOP BAR */}
-        <header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-[#E2E8F0] bg-white px-8">
-      <div>
-        <h1 className="text-[20px] font-bold text-[#0F172A]">Manajemen Role</h1>
-        <p className="text-[10.5px] text-[#64748B]">
-          Sistem Informasi Yudisium Terpadu DTEDI SV UGM
-        </p>
-      </div>
-      <ProfileMenu fallbackName="Super Admin" />
-    </header>
-
-        <main className="p-6 space-y-5">
-          {/* NOTIFIKASI */}
-          {notice && (
-            <div
-              className={`flex items-center justify-between rounded-xl border px-4 py-3 text-xs font-medium shadow-sm ${
-                notice.type === 'success'
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                  : 'border-rose-200 bg-rose-50 text-rose-700'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                {notice.type === 'success' ? <Check size={16} /> : <AlertCircle size={16} />}
-                <span>{notice.text}</span>
-              </div>
-              <button onClick={() => setNotice(null)}>
-                <X size={14} />
-              </button>
-            </div>
-          )}
-
-          <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100">
-            <h2 className="text-lg font-bold text-slate-900">Pengaturan Sistem</h2>
-            <p className="mt-0.5 text-xs text-slate-500">
-              Kelola role pengguna, form pengajuan, dan template Berita Acara. Hanya dapat diakses oleh akun dengan hak Super Admin.
+      {/* MAIN CONTENT */}
+      <div className={`${isAdminArea ? 'lg:pl-[295px]' : 'ml-[272px]'} min-h-screen`}>
+        {/* TOP HEADER */}
+        <header className="sticky top-0 z-30 flex h-[78px] items-center justify-between border-b border-[#E2E8F0] bg-white px-8">
+          <div>
+            <h1 className="text-[22px] font-bold leading-tight text-[#111111]">
+              {isAdminArea ? 'Profile Pengguna' : 'Profile Mahasiswa'}
+            </h1>
+            <p className="mt-0.5 text-[12px] text-[#687588]">
+              Sistem Informasi Yudisium Terpadu DTEDI SV UGM
             </p>
           </div>
 
-          {loadError && (
-            <div className="flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-700">
-              <span>{loadError}</span>
-              <button
-                onClick={() => {
-                  setLoading(true)
-                  loadAll()
-                }}
-                className="rounded-lg bg-white px-3 py-1.5 font-bold text-rose-700 border border-rose-200">
-                Coba lagi
-              </button>
+          <ProfileMenu fallbackName={displayName} />
+        </header>
+
+        {/* BODY */}
+        <main className="space-y-6 px-8 py-7">
+          {/* CARD 1: HEADER BANNER */}
+          <section className="rounded-2xl border border-[#E6ECF2] bg-white px-8 py-7 shadow-[0_2px_10px_rgba(15,23,42,0.03)]">
+            <h2 className="text-[22px] font-bold text-[#111827]">
+              {isAdminArea ? 'Kelola Profile Akun' : 'Kelola Profile Mahasiswa'}
+            </h2>
+            <p className="mt-1 text-[13px] text-[#64748B]">
+              Perbarui data personal dan foto profil akun SIYUDIS Anda.
+            </p>
+          </section>
+
+          {/* NOTIFIKASI */}
+          {notice && (
+            <div
+              className={`flex items-center gap-2.5 rounded-xl border px-5 py-3.5 text-xs font-medium ${
+                notice.type === 'success'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  : 'border-rose-200 bg-rose-50 text-rose-700'
+              }`}
+            >
+              {notice.type === 'success' ? (
+                <CheckCircle2 size={16} className="shrink-0" />
+              ) : (
+                <AlertCircle size={16} className="shrink-0" />
+              )}
+              <span>{notice.text}</span>
             </div>
           )}
 
-          {/* ROLE PENGGUNA */}
-          <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 space-y-5">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">Role Pengguna</h3>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {roles.length} role aktif di sistem. Role bawaan tidak dapat ditambah atau dihapus dari halaman ini.
-              </p>
+          {/* CARD 2: FOTO PROFILE */}
+          <section className="rounded-2xl border border-[#E6ECF2] bg-white p-7 shadow-[0_2px_10px_rgba(15,23,42,0.03)]">
+            <div className="flex items-start gap-3.5">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EBF3FA] text-[#0B3A68]">
+                <UserRound size={19} />
+              </div>
+              <div>
+                <h3 className="text-[15px] font-bold text-[#111827]">
+                  Foto Profile
+                </h3>
+                <p className="mt-0.5 text-[12px] text-[#64748B]">
+                  Ditampilkan pada profile akun Anda.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-start">
+              {/* AVATAR BOX + TOMBOL KAMERA */}
+              <div className="relative h-[126px] w-[126px] shrink-0">
+                <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-2xl border border-[#DCE4EE] bg-white p-2 shadow-2xs">
+                  {photo ? (
+                    <img
+                      src={photo}
+                      alt="Foto Profile"
+                      className="h-full w-full rounded-xl object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center rounded-full bg-[#C7CBD1] text-white">
+                      <UserRound size={58} />
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Ganti foto profile"
+                  className="absolute -bottom-2 -right-2 flex h-8 w-8 items-center justify-center rounded-lg bg-[#042F5B] text-white shadow-md transition hover:bg-[#073E73]"
+                >
+                  <Camera size={15} />
+                </button>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={handleSelectPhoto}
+                  className="hidden"
+                />
+              </div>
+
+              {/* TOMBOL UNGGAH, HAPUS & KETENTUAN */}
+              <div className="flex-1 space-y-3.5">
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#042F5B] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#073E73]"
+                  >
+                    <Upload size={14} />
+                    Unggah Foto Baru
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleRemovePhoto}
+                    disabled={!photo}
+                    className="inline-flex items-center gap-2 rounded-xl border border-[#FECACA] bg-[#FEE2E2] px-4 py-2.5 text-xs font-bold text-[#DC2626] transition hover:bg-[#FECACA]/70 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Trash2 size={14} />
+                    Hapus Foto
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2.5 rounded-xl border border-[#E2E8F0] bg-[#F4F7FB] px-4 py-3 text-[12px] text-[#334155]">
+                  <Info size={16} className="shrink-0 text-[#042F5B]" />
+                  <span>
+                    <strong className="font-bold text-[#0F172A]">
+                      Ketentuan Foto Profile:
+                    </strong>{' '}
+                    Format file PNG, JPG, atau WebP dengan ukuran maksimal 2.0 MB.
+                  </span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* CARD 3: DATA AKUN */}
+          <section className="rounded-2xl border border-[#E6ECF2] bg-white p-7 shadow-[0_2px_10px_rgba(15,23,42,0.03)]">
+            <div className="flex items-start gap-3.5">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EBF3FA] text-[#0B3A68]">
+                <IdCard size={19} />
+              </div>
+              <div>
+                <h3 className="text-[15px] font-bold text-[#111827]">
+                  Data Akun
+                </h3>
+                <p className="mt-0.5 text-[12px] text-[#64748B]">
+                  Identitas dari pengguna akun.
+                </p>
+              </div>
             </div>
 
             {loading ? (
-              <div className="flex items-center justify-center gap-2 py-8 text-xs text-slate-400">
-                <Loader2 size={16} className="animate-spin" /> Memuat role...
+              <div className="flex items-center justify-center gap-2 py-12 text-xs text-slate-400">
+                <Loader2 size={16} className="animate-spin" /> Memuat data akun...
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {roleCards.map((r) => {
-                  const IconComp = r.icon || ShieldCheck
-                  return (
-                    <div
-                      key={r.id}
-                      className="flex min-h-[140px] flex-col justify-between rounded-xl border border-slate-200/80 bg-[#F8FAFC] p-4 hover:border-slate-300 transition"
-                    >
-                      <div>
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100/70 text-[#0B3A68] shrink-0">
-                            <IconComp size={18} />
-                          </div>
-                          <div>
-                            <h4 className="text-xs font-bold text-slate-900">{r.name}</h4>
-                            <span className="text-[10px] text-slate-400">{r.count} pengguna</span>
-                          </div>
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-1.5">
-                          {(r.tags || []).map((tag) => (
-                            <span
-                              key={tag}
-                              className="rounded-md bg-white border border-slate-200/80 px-2 py-0.5 text-[10px] font-medium text-slate-600"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      {r.note && (
-                        <p className="mt-3 text-[10px] text-slate-400 leading-relaxed border-t border-slate-200/60 pt-2">
-                          {r.note}
-                        </p>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
+              <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+                {/* INPUT NAMA */}
+                <div>
+                  <label className="block text-xs font-bold text-[#111827]">
+                    Nama
+                  </label>
+                  <div className="relative mt-2">
+                    <UserRound
+                      size={16}
+                      className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#64748B]"
+                    />
+                    <input
+                      type="text"
+                      required
+                      value={nama}
+                      onChange={(e) => setNama(e.target.value)}
+                      placeholder="Masukkan nama lengkap"
+                      className="w-full rounded-xl border border-[#CBD5E1] bg-white py-3 pl-10 pr-4 text-[13px] font-medium text-[#111827] outline-none transition focus:border-[#042F5B] focus:ring-2 focus:ring-[#042F5B]/15"
+                    />
+                  </div>
+                </div>
 
-          {/* PENGGUNA & ROLE */}
-          <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">Pengguna & Role</h3>
-                <p className="text-xs text-slate-400 mt-0.5">Daftar seluruh akun dan role yang dimiliki.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setCreateForm(EMPTY_FORM)
-                  setIsCreateOpen(true)
-                }}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-[#0B3A68] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#072F57] transition shadow-2xs"
-              >
-                <Plus size={16} /> Tambah Pengguna
-              </button>
-            </div>
-
-            {/* TAB FILTERS */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1">
-              {['Semua', 'Mahasiswa', 'Staf Akademik', 'Kaprodi', 'Manit', 'Kadep'].map((tab) => {
-                const active = activeTabFilter === tab
-                return (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => {
-                      setActiveTabFilter(tab)
-                      setPage(1)
-                    }}
-                    className={`flex shrink-0 items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${
-                      active ? 'bg-[#0B3A68] text-white shadow-2xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
-                    }`}
-                  >
-                    <span>{tab}</span>
-                    <span
-                      className={`rounded-full px-1.5 text-[10px] ${
-                        active ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'
-                      }`}
-                    >
-                      {filterCounts[tab] || 0}
+                {/* INPUT EMAIL TERKUNCI */}
+                <div>
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-1.5 text-xs font-bold text-[#111827]">
+                      <span>Email Institusi SSO UGM</span>
+                      <Lock size={13} className="text-[#64748B]" />
+                    </label>
+                    <span className="text-[10px] font-bold tracking-wider text-[#64748B] uppercase">
+                      TERKUNCI
                     </span>
+                  </div>
+
+                  <div className="relative mt-2">
+                    <Mail
+                      size={16}
+                      className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#64748B]"
+                    />
+                    <input
+                      type="email"
+                      value={email}
+                      disabled
+                      className="w-full cursor-not-allowed rounded-xl border border-[#E2E8F0] bg-[#EEF2F7] py-3 pl-10 pr-4 text-[13px] font-medium text-[#334155]"
+                    />
+                  </div>
+
+                  <p className="mt-2 text-[11px] text-[#64748B]">
+                    Tersinkronisasi otomatis via Google Workspace UGM Mail.
+                  </p>
+                </div>
+
+                {/* ACTION BUTTONS */}
+                <div className="flex items-center justify-end gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={handleCancel}
+                    disabled={saving}
+                    className="inline-flex items-center gap-2 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-5 py-2.5 text-xs font-bold text-[#111827] transition hover:bg-[#EEF2F6] disabled:opacity-50"
+                  >
+                    <X size={14} />
+                    Batal
                   </button>
-                )
-              })}
-            </div>
 
-            {/* SEARCH */}
-            <div className="relative">
-              <Search size={16} className="absolute left-3.5 top-3 text-slate-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value)
-                  setPage(1)
-                }}
-                placeholder="Cari Nama / Email / NIM..."
-                className="w-full rounded-xl border border-slate-200 bg-[#F8FAFC] py-2.5 pl-10 pr-4 text-xs outline-none focus:border-blue-500 focus:bg-white"
-              />
-            </div>
-
-            {/* TABLE */}
-            <div className="rounded-xl border border-slate-100 overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-[#F8FAFC] text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100">
-                    <th className="px-4 py-3">Pengguna</th>
-                    <th className="px-4 py-3">Role</th>
-                    <th className="px-4 py-3">Prodi</th>
-                    <th className="px-4 py-3 text-center">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-xs">
-                  {loading && (
-                    <tr>
-                      <td colSpan={4} className="px-4 py-8 text-center text-slate-400">
-                        <Loader2 size={16} className="mx-auto animate-spin" />
-                      </td>
-                    </tr>
-                  )}
-                  {!loading && pagedUsers.length === 0 && (
-                    <tr>
-                      <td colSpan={4} className="px-4 py-8 text-center text-slate-400">
-                        Tidak ada pengguna yang cocok.
-                      </td>
-                    </tr>
-                  )}
-                  {pagedUsers.map((u) => {
-                    const key = roleKey(u.roleName)
-                    return (
-                      <tr key={u.id} className="hover:bg-slate-50/60 transition">
-                        <td className="px-4 py-3.5">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[10px] font-bold text-slate-600">
-                              {initials(u.nama)}
-                            </div>
-                            <div>
-                              <p className="font-bold text-slate-900">{u.nama}</p>
-                              <p className="text-[10px] text-slate-400">{u.email}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3.5">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span
-                              className={`rounded-md px-2.5 py-1 text-[10px] font-bold ${
-                                key === 'mahasiswa' || key === 'super_admin'
-                                  ? 'bg-amber-100/80 text-amber-800'
-                                  : 'bg-blue-100/80 text-blue-900'
-                              }`}
-                            >
-                              {ROLE_LABEL[key] || u.roleName || '-'}
-                            </span>
-                            {key === 'mahasiswa' && (
-                              <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">
-                                Default
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3.5 text-slate-600 font-medium">{prodiLabel(u)}</td>
-                        <td className="px-4 py-3.5 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenUserModal(u)}
-                            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition shadow-2xs"
-                          >
-                            Kelola
-                          </button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* PAGINATION */}
-            <div className="flex items-center justify-between gap-2 text-xs text-slate-400 pt-2">
-              <span>{filteredUsers.length} pengguna</span>
-              <div className="flex items-center gap-2">
-                <button
-                  disabled={safePage <= 1}
-                  onClick={() => setPage(safePage - 1)}
-                  className="p-1 text-slate-500 disabled:text-slate-300 disabled:cursor-not-allowed"
-                >
-                  <ChevronLeft size={16} />
-                </button>
-                <span className="flex h-6 min-w-6 items-center justify-center rounded-md bg-[#0B3A68] px-1.5 text-xs font-bold text-white">
-                  {safePage}
-                </span>
-                <span>/ {totalPages}</span>
-                <button
-                  disabled={safePage >= totalPages}
-                  onClick={() => setPage(safePage + 1)}
-                  className="p-1 text-slate-500 disabled:text-slate-300 disabled:cursor-not-allowed"
-                >
-                  <ChevronRight size={16} />
-                </button>
-              </div>
-            </div>
-          </div>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#042F5B] px-5 py-2.5 text-xs font-bold text-white transition hover:bg-[#073E73] disabled:opacity-60"
+                  >
+                    {saving ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Save size={14} />
+                    )}
+                    {saving ? 'Menyimpan...' : 'Simpan Perubahan'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </section>
         </main>
       </div>
-
-      {/* MODAL: KELOLA PENGGUNA */}
-      {selectedUserModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[2px]">
-          <div className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-base font-bold text-slate-900">Kelola Pengguna</h3>
-              <button onClick={() => setSelectedUserModal(null)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-3 rounded-2xl bg-[#F8FAFC] p-4 border border-slate-100">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-200 text-xs font-bold text-slate-700">
-                {initials(selectedUserModal.nama)}
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-slate-900">{selectedUserModal.nama}</h4>
-                <p className="text-xs text-slate-400">{selectedUserModal.email}</p>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Nama</label>
-              <input
-                value={editForm.nama}
-                onChange={(e) => setEditForm({ ...editForm, nama: e.target.value })}
-                className={inputCls}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <div>
-                <h4 className="text-xs font-bold text-slate-900">Role</h4>
-                <p className="text-[11px] text-slate-400">Satu pengguna memegang satu role pada satu waktu.</p>
-              </div>
-              {roles.map((r) => {
-                const name = r.name ?? r.nama ?? r.nama_role ?? ''
-                const key = roleKey(name)
-                const meta = ROLE_META[key] || { icon: ShieldCheck, desc: '' }
-                const RoleIcon = meta.icon
-                const checked = String(editForm.role_id) === String(r.id)
-                return (
-                  <label
-                    key={r.id}
-                    className={`flex items-start gap-3 rounded-xl border p-3.5 cursor-pointer transition ${
-                      checked ? 'border-blue-300 bg-blue-50/20' : 'border-slate-200 bg-white'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="role"
-                      checked={checked}
-                      onChange={() => setEditForm({ ...editForm, role_id: r.id })}
-                      className="mt-0.5 h-4 w-4 accent-[#0B3A68]"
-                    />
-                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-600 shrink-0">
-                      <RoleIcon size={16} />
-                    </div>
-                    <div>
-                      <span className="block text-xs font-bold text-slate-900">{ROLE_LABEL[key] || name}</span>
-                      <span className="text-[10px] text-slate-400">{meta.desc}</span>
-                    </div>
-                  </label>
-                )
-              })}
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Program Studi</label>
-              <ProdiSelect
-                prodiList={prodiList}
-                value={editForm.program_studi_id}
-                onChange={(v) => setEditForm({ ...editForm, program_studi_id: v })}
-              />
-            </div>
-
-            {roleKey(roleNameById(editForm.role_id)) === 'super_admin' && (
-              <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/60 p-3.5 text-amber-900">
-                <AlertCircle size={16} className="shrink-0 mt-0.5 text-amber-700" />
-                <span className="text-[11px] leading-relaxed">
-                  Memberi hak Super Admin akan memberi akses penuh ke Pengaturan Sistem (Manajemen Role, Form Pengajuan, Template Berita Acara) kepada pengguna ini.
-                </span>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setConfirmDelete(true)}
-                disabled={String(selectedUserModal.id) === String(currentUser?.id)}
-                title={
-                  String(selectedUserModal.id) === String(currentUser?.id)
-                    ? 'Anda tidak dapat menghapus akun sendiri'
-                    : ''
-                }
-                className="flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50/50 px-4 py-2.5 text-xs font-bold text-rose-600 hover:bg-rose-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <Trash2 size={14} /> Hapus Pengguna
-              </button>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSelectedUserModal(null)}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
-                >
-                  Batal
-                </button>
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={handleSaveUser}
-                  className="flex items-center gap-1.5 rounded-xl bg-[#0B3A68] px-5 py-2.5 text-xs font-bold text-white hover:bg-[#072F57] transition shadow-2xs disabled:opacity-60"
-                >
-                  {saving && <Loader2 size={13} className="animate-spin" />} Simpan Perubahan
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* KONFIRMASI HAPUS */}
-      {confirmDelete && selectedUserModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-[2px]">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 text-center space-y-4">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-100 text-rose-600">
-              <AlertCircle size={24} />
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-slate-900">Hapus "{selectedUserModal.nama}"?</h4>
-              <p className="mt-1 text-xs text-slate-500 leading-relaxed">
-                Akun ini akan dihapus dari SIYUDIS dan tidak dapat login lagi. Tindakan ini tidak dapat dibatalkan.
-              </p>
-            </div>
-            <div className="flex justify-center gap-2 pt-2">
-              <button
-                onClick={() => setConfirmDelete(false)}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
-              >
-                Batal
-              </button>
-              <button
-                onClick={handleDeleteUser}
-                disabled={saving}
-                className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 transition disabled:opacity-60"
-              >
-                Ya, Hapus
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: TAMBAH PENGGUNA */}
-      {isCreateOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[2px]">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">Tambah Pengguna</h3>
-                <p className="text-[11px] text-slate-400">
-                  Untuk staf dan pejabat. Akun mahasiswa dibuat otomatis saat login Google pertama.
-                </p>
-              </div>
-              <button onClick={() => setIsCreateOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="space-y-3.5">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Nama</label>
-                <input
-                  value={createForm.nama}
-                  onChange={(e) => setCreateForm({ ...createForm, nama: e.target.value })}
-                  placeholder="Nama lengkap"
-                  className={inputCls}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Email</label>
-                <input
-                  type="email"
-                  value={createForm.email}
-                  onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
-                  placeholder="nama@ugm.ac.id"
-                  className={inputCls}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Role</label>
-                <select
-                  value={createForm.role_id}
-                  onChange={(e) => setCreateForm({ ...createForm, role_id: e.target.value })}
-                  className={inputCls}
-                >
-                  <option value="">Pilih role</option>
-                  {assignableRoles.map((r) => {
-                    const name = r.name ?? r.nama ?? r.nama_role ?? ''
-                    return (
-                      <option key={r.id} value={r.id}>
-                        {ROLE_LABEL[roleKey(name)] || name}
-                      </option>
-                    )
-                  })}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Program Studi</label>
-                <ProdiSelect
-                  prodiList={prodiList}
-                  value={createForm.program_studi_id}
-                  onChange={(v) => setCreateForm({ ...createForm, program_studi_id: v })}
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
-              <button
-                type="button"
-                onClick={() => setIsCreateOpen(false)}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                disabled={saving}
-                onClick={handleCreateUser}
-                className="flex items-center gap-1.5 rounded-xl bg-[#0B3A68] px-5 py-2 text-xs font-bold text-white hover:bg-[#072F57] transition disabled:opacity-60"
-              >
-                {saving && <Loader2 size={13} className="animate-spin" />} Simpan Pengguna
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
+  )
+}
+
+/* =========================================================
+   SIDEBAR KHUSUS MAHASISWA
+========================================================= */
+function StudentSidebar({ navigate }) {
+  return (
+    <aside className="fixed left-0 top-0 z-30 h-screen w-[272px] bg-[#063E73] text-white">
+      <div className="px-5 pt-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center">
+            <img
+              src={ugmLogo}
+              alt="Logo UGM"
+              className="h-12 w-12 object-contain"
+            />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-[16px] font-bold tracking-wide">SIYUDIS</h1>
+            <p className="mt-0.5 whitespace-nowrap text-[9px] text-white/75">
+              Departemen Teknik Elektro dan Informatika
+            </p>
+          </div>
+        </div>
+        <div className="mt-7 h-px bg-white/30" />
+      </div>
+
+      <nav className="mt-8 px-4">
+        <button
+          type="button"
+          onClick={() => navigate('/dashboard')}
+          className="flex h-[43px] w-full items-center gap-4 rounded-xl bg-white/15 px-4 text-left font-medium text-white transition hover:bg-white/20"
+        >
+          <Home size={20} strokeWidth={1.8} />
+          <span className="text-sm">Dashboard</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => navigate('/pengajuan-yudisium')}
+          className="mt-2 flex h-[43px] w-full items-center gap-4 rounded-xl px-4 text-left text-white/65 transition hover:bg-white/10 hover:text-white"
+        >
+          <FileText size={20} strokeWidth={1.8} />
+          <span className="text-sm">Pengajuan Yudisium</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => navigate('/berita-acara')}
+          className="mt-2 flex h-[43px] w-full items-center gap-4 rounded-xl px-4 text-left text-white/65 transition hover:bg-white/10 hover:text-white"
+        >
+          <ShieldCheck size={20} strokeWidth={1.8} />
+          <span className="text-sm">Berita Acara</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => navigate('/panduan')}
+          className="mt-2 flex h-[43px] w-full items-center gap-4 rounded-xl px-4 text-left text-white/65 transition hover:bg-white/10 hover:text-white"
+        >
+          <BookOpen size={20} strokeWidth={1.8} />
+          <span className="text-sm">Panduan &amp; Dokumen</span>
+        </button>
+      </nav>
+    </aside>
   )
 }

@@ -16,10 +16,13 @@ import {
   X,
 } from 'lucide-react'
 
-import { getUser, clearUser } from '../../services/auth'
+import { clearUser, logout } from '../../services/auth'
+import useCurrentUser from '../../hooks/useCurrentUser'
 import ugmLogo from '../../assets/ugm-logo.png'
 import persyaratanImage from '../../assets/persyaratan-yudisium.png'
 
+// TODO: endpoint belum ada — daftar template dokumen dan gambar persyaratan yudisium belum tersedia di API
+// (Postman tidak punya endpoint panduan/template). Konten di bawah tetap berupa aset statis frontend.
 const templates = [
   {
     id: 1,
@@ -133,19 +136,25 @@ function Sidebar({ isOpen, onClose }) {
   )
 }
 
-function Header({ onOpenSidebar }) {
+function Header({ onOpenSidebar, user }) {
   const navigate = useNavigate()
-
-  const [user] = useState(
-    () => getUser() || { name: 'Raihananta Khoiril Anam Pitoyo', email: 'raihananta.k@mail.ugm.ac.id', photo: null },
-  )
   const [profileOpen, setProfileOpen] = useState(false)
 
-  const displayName = user?.name || 'Raihananta Khoiril Anam Pitoyo'
-  const email = user?.email || 'raihananta.k@mail.ugm.ac.id'
+  const displayName = user?.nama || user?.name || 'Mahasiswa'
+  const email = user?.email || '-'
+  const savedPhoto =
+    localStorage.getItem(`profile_photo_${email}`) ||
+    user?.avatar ||
+    user?.photo ||
+    user?.foto ||
+    null
 
-  const handleLogout = () => {
-    clearUser()
+  const handleLogout = async () => {
+    try {
+      await logout()
+    } catch {
+      clearUser()
+    }
     setProfileOpen(false)
     navigate('/')
   }
@@ -182,8 +191,8 @@ function Header({ onOpenSidebar }) {
           onClick={() => setProfileOpen((open) => !open)}
           className="flex items-center gap-2.5 rounded-full py-1 px-1.5 hover:bg-gray-50 transition"
         >
-          {user?.photo ? (
-            <img src={user.photo} alt="" className="h-9 w-9 lg:h-10 lg:w-10 rounded-full object-cover" />
+          {savedPhoto ? (
+            <img src={savedPhoto} alt="" className="h-9 w-9 lg:h-10 lg:w-10 rounded-full object-cover" />
           ) : (
             <div className="h-9 w-9 lg:h-10 lg:w-10 shrink-0">
               <DefaultAvatarIcon />
@@ -204,8 +213,8 @@ function Header({ onOpenSidebar }) {
             <div className="flex flex-col items-center py-5">
               <div className="relative flex items-center justify-center">
                 <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-full border-[5px] border-[#e8edf5] bg-[#c7cbd1] flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
-                  {user?.photo ? (
-                    <img src={user.photo} alt="" className="h-full w-full object-cover" />
+                  {savedPhoto ? (
+                    <img src={savedPhoto} alt="" className="h-full w-full object-cover" />
                   ) : (
                     <DefaultAvatarIcon />
                   )}
@@ -221,7 +230,8 @@ function Header({ onOpenSidebar }) {
             <div className="border-t border-gray-100 pt-3 space-y-1.5">
               <button
                 type="button"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation()
                   setProfileOpen(false)
                   navigate('/profile')
                 }}
@@ -262,6 +272,8 @@ function Header({ onOpenSidebar }) {
 export default function PanduanDokumenPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [zoom, setZoom] = useState(100)
+  // Data akun terbaru dari GET /me (token session, via useCurrentUser)
+  const user = useCurrentUser()
   const viewerRef = useRef(null)
 
   const zoomOut = () => setZoom((z) => Math.max(50, z - 10))
@@ -290,7 +302,7 @@ export default function PanduanDokumenPage() {
   return (
     <div className="min-h-screen bg-[#EEF3F8] text-[#111827]">
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <Header onOpenSidebar={() => setSidebarOpen(true)} />
+      <Header onOpenSidebar={() => setSidebarOpen(true)} user={user} />
 
       <main className="ml-0 lg:ml-[272px] pt-[88px]">
         <div className="mx-auto max-w-[1090px] px-4 sm:px-7 py-6 sm:py-8">

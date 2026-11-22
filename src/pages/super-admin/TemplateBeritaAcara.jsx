@@ -22,10 +22,8 @@ import {
   updateBeritaAcaraTemplate
 } from '../../services/adminApi'
 
-
-
 // ==========================================
-// PLACEHOLDER (daftar resmi dari backend; deskripsi sebagai penjelasan di UI)
+// PLACEHOLDER
 // ==========================================
 const FALLBACK_PLACEHOLDERS = [
   'prodi', 'periode', 'nomor_surat', 'tanggal_surat', 'tabel_mahasiswa',
@@ -77,7 +75,7 @@ function renderPreview(html, allowed) {
 }
 
 // ==========================================
-// 2. HALAMAN UTAMA TEMPLATE BERITA ACARA
+// MAIN PAGE: TEMPLATE BERITA ACARA
 // ==========================================
 export default function SuperAdminTemplateBeritaAcara() {
   const textareaRef = useRef(null)
@@ -183,7 +181,6 @@ export default function SuperAdminTemplateBeritaAcara() {
     e.target.value = ''
   }
 
-  // validasi ringan di sisi klien (server tetap sumber kebenaran)
   const validateDraft = (allowed) => {
     if (!draft.trim()) return 'Template tidak boleh kosong.'
     if (/<script/i.test(draft)) return 'Template tidak boleh mengandung tag <script>.'
@@ -211,12 +208,9 @@ export default function SuperAdminTemplateBeritaAcara() {
     }
   }
 
-  return (
-    <div className="min-h-screen bg-[#F0F4F8] font-sans text-slate-800">
-      <Sidebar admin />
-
-      <div className="min-h-screen lg:pl-[295px]">
-        <header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-[#E2E8F0] bg-white px-8">
+  // HEADER BAR DENGAN PADDING RESPONSIVE AGAR TIDAK TERTUTUP HAMBURGER
+  const headerBar = (
+    <header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-[#E2E8F0] bg-white px-4 lg:px-8 pl-14 lg:pl-8">
       <div>
         <h1 className="text-[20px] font-bold text-[#0F172A]">Template Berita Acara</h1>
         <p className="text-[10.5px] text-[#64748B]">
@@ -225,6 +219,14 @@ export default function SuperAdminTemplateBeritaAcara() {
       </div>
       <ProfileMenu fallbackName="Super Admin" />
     </header>
+  )
+
+  return (
+    <div className="min-h-screen bg-[#F0F4F8] font-sans text-slate-800">
+      <Sidebar admin />
+
+      <div className="min-h-screen lg:pl-[295px]">
+        {headerBar}
 
         <main className="p-6 space-y-5">
           {toast && (

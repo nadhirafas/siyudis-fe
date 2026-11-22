@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Home,
@@ -26,16 +26,30 @@ import {
   Award,
   PenTool,
   Hourglass,
+  Loader2,
   ClipboardList,
 } from 'lucide-react'
 
-import { getUser, clearUser } from '../../services/auth'
+import { clearUser, logout } from '../../services/auth'
+import { errorMessage } from '../../services/api'
+import { formatDate } from '../../services/normalize'
+import {
+  exportBeritaAcara,
+  getRekap,
+  konfirmasiData,
+  previewBeritaAcara,
+} from '../../services/mahasiswaApi'
+import {
+  beritaAcaraViewState,
+  buildRekapHtml,
+  cleanNim,
+  trackingDates,
+  trackingState,
+} from '../../services/mahasiswaStatus'
+import useCurrentUser from '../../hooks/useCurrentUser'
+import useMyPengajuan from '../../hooks/useMyPengajuan'
 import ugmLogo from '../../assets/ugm-logo.png'
-import draftBaPdf from '../../assets/berita-acara-trpl.pdf'
 
-// ============================================================================
-// KOMPONEN SIDEBAR
-// ============================================================================
 function Sidebar({ isOpen, onClose }) {
   const navigate = useNavigate()
 
@@ -126,16 +140,24 @@ function Sidebar({ isOpen, onClose }) {
 function Header({ onOpenSidebar }) {
   const navigate = useNavigate()
 
-  const [user] = useState(
-    () => getUser() || { name: 'Raihananta Khoiril Anam Pitoyo', email: 'raihananta.k@mail.ugm.ac.id', photo: null },
-  )
+  const user = useCurrentUser()
   const [profileOpen, setProfileOpen] = useState(false)
 
-  const displayName = user?.name || 'Raihananta Khoiril Anam Pitoyo'
-  const email = user?.email || 'raihananta.k@mail.ugm.ac.id'
+  const displayName = user?.nama || user?.name || 'Mahasiswa'
+  const email = user?.email || '-'
+  const savedPhoto =
+    localStorage.getItem(`profile_photo_${email}`) ||
+    user?.avatar ||
+    user?.photo ||
+    user?.foto ||
+    null
 
-  const handleLogout = () => {
-    clearUser()
+  const handleLogout = async () => {
+    try {
+      await logout()
+    } catch {
+      clearUser()
+    }
     setProfileOpen(false)
     navigate('/')
   }
@@ -172,8 +194,8 @@ function Header({ onOpenSidebar }) {
           onClick={() => setProfileOpen((open) => !open)}
           className="flex items-center gap-2.5 rounded-full py-1 px-1.5 hover:bg-gray-50 transition"
         >
-          {user?.photo ? (
-            <img src={user.photo} alt="" className="h-9 w-9 lg:h-10 lg:w-10 rounded-full object-cover" />
+          {savedPhoto ? (
+            <img src={savedPhoto} alt="" className="h-9 w-9 lg:h-10 lg:w-10 rounded-full object-cover" />
           ) : (
             <div className="h-9 w-9 lg:h-10 lg:w-10 shrink-0">
               <DefaultAvatarIcon />
@@ -194,8 +216,8 @@ function Header({ onOpenSidebar }) {
             <div className="flex flex-col items-center py-5">
               <div className="relative flex items-center justify-center">
                 <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-full border-[5px] border-[#e8edf5] bg-[#c7cbd1] flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
-                  {user?.photo ? (
-                    <img src={user.photo} alt="" className="h-full w-full object-cover" />
+                  {savedPhoto ? (
+                    <img src={savedPhoto} alt="" className="h-full w-full object-cover" />
                   ) : (
                     <DefaultAvatarIcon />
                   )}
@@ -211,7 +233,8 @@ function Header({ onOpenSidebar }) {
             <div className="border-t border-gray-100 pt-3 space-y-1.5">
               <button
                 type="button"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation()
                   setProfileOpen(false)
                   navigate('/profile')
                 }}
@@ -252,15 +275,16 @@ function Header({ onOpenSidebar }) {
 // ============================================================================
 // KOMPONEN PELACAKAN PROGRES
 // ============================================================================
-function ProgressTracker({ activeStep = 4 }) {
+function ProgressTracker({ activeStep = 4, dates = {} }) {
+  // TODO: endpoint belum ada — tanggal tiap tahap selain pengajuan belum tersedia di API
   const steps = [
-    { title: 'Pengajuan Yudisium', desc: 'Unggah berkas persyaratan', status: 'Selesai', date: '21 Okt 2026' },
-    { title: 'Verifikasi Pengajuan Yudisium', desc: 'Staf akademik memeriksa berkas', status: 'Selesai', date: '22 Okt 2026' },
-    { title: 'Verifikasi Draft Berita Acara', desc: 'Anda memeriksa data draft BA', status: 'Selesai', date: '22 Okt 2026' },
-    { title: 'Validasi Kaprodi', desc: 'Review & persetujuan', status: 'Proses Aktif', date: null },
-    { title: 'Pengesahan Manit', desc: 'TTE Manit setelah Kaprodi', status: 'Menunggu', date: null },
-    { title: 'Pengesahan Kadep', desc: 'TTE Kadep setelah Manit', status: 'Menunggu', date: null },
-    { title: 'Penerbitan Berita Acara Final', desc: 'Berita Acara sah TTE siap unduh', status: 'Menunggu', date: null },
+    { title: 'Pengajuan Yudisium', desc: 'Unggah berkas persyaratan', date: dates[1] },
+    { title: 'Verifikasi Pengajuan Yudisium', desc: 'Staf akademik memeriksa berkas', date: dates[2] },
+    { title: 'Verifikasi Draft Berita Acara', desc: 'Anda memeriksa data draft BA', date: dates[3] },
+    { title: 'Validasi Kaprodi', desc: 'Review & persetujuan', date: dates[4] },
+    { title: 'Pengesahan Manit', desc: 'TTE Manit setelah Kaprodi', date: dates[5] },
+    { title: 'Pengesahan Kadep', desc: 'TTE Kadep setelah Manit', date: dates[6] },
+    { title: 'Penerbitan Berita Acara Final', desc: 'Berita Acara sah TTE siap unduh', date: dates[7] },
   ]
 
   return (
@@ -279,10 +303,9 @@ function ProgressTracker({ activeStep = 4 }) {
 
       <div className="overflow-x-auto pb-4 pt-2">
         <div className="min-w-[840px] relative px-6">
-          
           {/* GARIS PENGHUBUNG BASE */}
           <div className="absolute top-[20px] left-[7.14%] right-[7.14%] h-[4px] bg-slate-200 -z-0" />
-          
+
           {/* GARIS AKTIF */}
           <div
             className="absolute top-[20px] left-[7.14%] h-[4px] bg-[#173b6d] transition-all duration-500 -z-0"
@@ -357,7 +380,6 @@ function ProgressTracker({ activeStep = 4 }) {
               )
             })}
           </div>
-
         </div>
       </div>
     </div>
@@ -365,9 +387,15 @@ function ProgressTracker({ activeStep = 4 }) {
 }
 
 // ============================================================================
-// KOMPONEN PRATINJAU DOKUMEN BA (MENAMPILKAN FILE PDF & KETERANGAN NOMOR DOKUMEN)
+// KOMPONEN PRATINJAU DOKUMEN BA
 // ============================================================================
-function DocumentViewer({ title = 'Pratinjau Dokumen Berita Acara Rapat Yudisium' }) {
+function DocumentViewer({
+  title = 'Pratinjau Dokumen Berita Acara Rapat Yudisium',
+  html = '',
+  loading = false,
+  error = '',
+  docNumber = '',
+}) {
   const [zoom, setZoom] = useState(100)
   const docContainerRef = useRef(null)
 
@@ -375,10 +403,12 @@ function DocumentViewer({ title = 'Pratinjau Dokumen Berita Acara Rapat Yudisium
   const handleZoomOut = () => setZoom((prev) => Math.max(prev - 10, 70))
 
   const handlePrintDoc = () => {
-    const printWindow = window.open(draftBaPdf, '_blank')
-    if (printWindow) {
-      printWindow.focus()
-    }
+    const printWindow = window.open('', '_blank')
+    if (!printWindow || !html) return
+    printWindow.document.write(html)
+    printWindow.document.close()
+    printWindow.focus()
+    printWindow.print()
   }
 
   const handleFullscreenDoc = () => {
@@ -445,21 +475,31 @@ function DocumentViewer({ title = 'Pratinjau Dokumen Berita Acara Rapat Yudisium
           className="bg-white shadow-md rounded-lg max-w-[850px] w-full h-[650px] border border-slate-200 overflow-hidden transition-all duration-200"
           style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top center' }}
         >
-          <iframe
-            src={`${draftBaPdf}#toolbar=0&navpanes=0`}
-            title="Pratinjau Berita Acara Yudisium DTEDI"
-            className="w-full h-full border-0"
-          />
+          {loading ? (
+            <div className="flex h-full w-full items-center justify-center gap-2 text-sm text-slate-500">
+              <Loader2 size={18} className="animate-spin" /> Memuat dokumen...
+            </div>
+          ) : error ? (
+            <div className="flex h-full w-full items-center justify-center p-6 text-center text-sm font-medium text-red-600">
+              {error}
+            </div>
+          ) : (
+            <iframe
+              srcDoc={html}
+              sandbox=""
+              title="Pratinjau Berita Acara Yudisium DTEDI"
+              className="w-full h-full border-0"
+            />
+          )}
         </div>
       </div>
 
-      {/* FOOTER DOKUMEN (TANPA KETERANGAN HALAMAN 1 DARI 1) */}
       <div className="border-t border-slate-200 bg-slate-50 px-5 py-3 text-[11px] text-slate-500 flex flex-wrap justify-between items-center gap-2">
         <div className="flex items-center gap-2">
           <Award size={16} className="text-emerald-600 shrink-0" />
           <span>Format Dokumen Resmi Rapat Yudisium DTEDI SV UGM • Sesuai Standar Akademik Keputusan Departemen</span>
         </div>
-        <p>Nomor Dokumen: 142/UN1/SV.3/DTEDI/BAK/2026</p>
+        {docNumber && <p>Nomor Dokumen: {docNumber}</p>}
       </div>
     </div>
   )
@@ -472,14 +512,76 @@ export default function BeritaAcaraPage() {
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  // State tampilan ('1' | '2' | '3' | '4A' | '4B' | '5')
-  const [viewState, setViewState] = useState('2')
+  // Data akun (GET /me) dan pengajuan milik mahasiswa (GET /pengajuan/me)
+  const user = useCurrentUser()
+  const { pengajuan, loading, error, reload } = useMyPengajuan()
 
+  const [showRevisionForm, setShowRevisionForm] = useState(false)
   const [revisionNote, setRevisionNote] = useState('')
   const [agreeTerms, setAgreeTerms] = useState(false)
   const [submitErr, setSubmitErr] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [viewerDoc, setViewerDoc] = useState({ key: '', html: '', error: '' })
 
-  const handleSendRevision = (e) => {
+  // State tampilan ('1' | '2' | '3' | '4A' | '4B' | '5') diturunkan dari status pengajuan di server.
+  // '3' (form catatan revisi) hanyalah tampilan lokal setelah mahasiswa menekan "Data Salah".
+  const baseState = loading ? '' : beritaAcaraViewState(pengajuan)
+  const viewState = showRevisionForm && baseState === '2' ? '3' : baseState
+  const { step: activeStep } = trackingState(pengajuan)
+  const dates = trackingDates(pengajuan)
+
+  const identNama = user?.nama || user?.name || ''
+  const identNim = cleanNim(user?.nomor_induk || user?.nim)
+  const identProdi = user?.prodiNama || user?.program_studi?.nama || ''
+  const beritaAcaraId = pengajuan?.beritaAcaraId
+
+  // Dokumen yang ditampilkan di viewer: rekap data penilaian (tahap konfirmasi) atau pratinjau BA (terbit)
+  const needsDoc = viewState === '2' || viewState === '3' || viewState === '5'
+  const docKey = viewState === '5' ? `ba-${beritaAcaraId}` : 'rekap'
+  const docLoading = needsDoc && viewerDoc.key !== docKey
+
+  useEffect(() => {
+    if (!needsDoc) return undefined
+    let cancelled = false
+
+    const request =
+      docKey.startsWith('ba-')
+        ? beritaAcaraId
+          ? previewBeritaAcara(beritaAcaraId).then((d) => d?.html || '')
+          : // TODO: endpoint belum ada — GET /pengajuan/me belum terbukti mengembalikan ID Berita Acara
+            Promise.reject(new Error('ID Berita Acara belum tersedia dari server.'))
+        : getRekap().then((r) => buildRekapHtml(r, { nama: identNama, nim: identNim, prodi: identProdi }))
+
+    request
+      .then((html) => {
+        if (!cancelled) setViewerDoc({ key: docKey, html, error: html ? '' : 'Dokumen kosong.' })
+      })
+      .catch((err) => {
+        if (!cancelled) setViewerDoc({ key: docKey, html: '', error: errorMessage(err, 'Gagal memuat dokumen') })
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [needsDoc, docKey, beritaAcaraId, identNama, identNim, identProdi])
+
+  // Data Benar -> PATCH /pengajuan/me/konfirmasi { konfirmasi: 'benar' }
+  const handleConfirmBenar = async () => {
+    setSubmitting(true)
+    setSubmitErr('')
+    try {
+      await konfirmasiData({ konfirmasi: 'benar' })
+      await reload()
+    } catch (err) {
+      setSubmitErr(errorMessage(err, 'Gagal mengirim konfirmasi data'))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Data Salah -> PATCH /pengajuan/me/konfirmasi { konfirmasi: 'salah', catatan }
+  const handleSendRevision = async (e) => {
     e.preventDefault()
     if (!revisionNote.trim()) {
       setSubmitErr('Catatan rincian kesalahan data wajib diisi.')
@@ -490,7 +592,48 @@ export default function BeritaAcaraPage() {
       return
     }
     setSubmitErr('')
-    setViewState('4B')
+    setSubmitting(true)
+    try {
+      await konfirmasiData({ konfirmasi: 'salah', catatan: revisionNote.trim() })
+      setShowRevisionForm(false)
+      setRevisionNote('')
+      setAgreeTerms(false)
+      await reload()
+    } catch (err) {
+      setSubmitErr(errorMessage(err, 'Gagal mengirim catatan revisi'))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Unduh / buka PDF resmi (GET /berita-acara/{id}/export; baru tersedia setelah pengesahan selesai)
+  const handlePdf = async (mode) => {
+    if (!beritaAcaraId) {
+      setSubmitErr('ID Berita Acara belum tersedia dari server.')
+      return
+    }
+    setDownloading(true)
+    setSubmitErr('')
+    try {
+      const blob = await exportBeritaAcara(beritaAcaraId)
+      const url = URL.createObjectURL(blob)
+      if (mode === 'open') {
+        const win = window.open(url, '_blank')
+        if (win) win.focus()
+      } else {
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `Berita_Acara_Yudisium_${beritaAcaraId}.pdf`
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch (err) {
+      setSubmitErr(errorMessage(err, 'Gagal mengunduh Berita Acara'))
+    } finally {
+      setDownloading(false)
+    }
   }
 
   return (
@@ -500,10 +643,18 @@ export default function BeritaAcaraPage() {
 
       <main className="ml-0 lg:ml-[272px] pt-[88px]">
         <div className="mx-auto max-w-[1090px] px-4 sm:px-7 py-6 sm:py-8 space-y-6">
-
-          {/* ============================================================================ */}
-          {/* TAMPILAN 1: DRAFT BELUM TERSEDIA                                             */}
-          {/* ============================================================================ */}
+          {loading && (
+            <div className="flex items-center gap-2 rounded-2xl bg-white p-4 text-sm text-slate-500 shadow-sm">
+              <Loader2 size={16} className="animate-spin" /> Memuat data Berita Acara...
+            </div>
+          )}
+          {error && (
+            <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+              <AlertCircle size={18} className="mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+          {/* TAMPILAN 1: DRAFT BELUM TERSEDIA */}
           {viewState === '1' && (
             <div className="space-y-6">
               <div className="rounded-2xl bg-white p-5 sm:p-8 shadow-sm">
@@ -580,9 +731,7 @@ export default function BeritaAcaraPage() {
             </div>
           )}
 
-          {/* ============================================================================ */}
-          {/* TAMPILAN 2: REVIEW DRAFT MAHASISWA                                           */}
-          {/* ============================================================================ */}
+          {/* TAMPILAN 2: REVIEW DRAFT MAHASISWA */}
           {viewState === '2' && (
             <div className="space-y-6">
               <div className="flex items-start gap-4 rounded-2xl border border-[#cce1f8] bg-[#ebf3fc] p-5 shadow-xs">
@@ -599,7 +748,7 @@ export default function BeritaAcaraPage() {
                 </div>
               </div>
 
-              <DocumentViewer />
+              <DocumentViewer html={viewerDoc.html} loading={docLoading} error={viewerDoc.error} />
 
               <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-7 shadow-xs space-y-5">
                 <div className="flex items-start gap-3">
@@ -614,10 +763,19 @@ export default function BeritaAcaraPage() {
                   </div>
                 </div>
 
+                {submitErr && (
+                  <p className="flex items-center gap-1.5 text-xs font-medium text-red-600">
+                    <AlertCircle size={14} /> {submitErr}
+                  </p>
+                )}
+
                 <div className="flex flex-col sm:flex-row items-center justify-end gap-3 pt-2">
                   <button
                     type="button"
-                    onClick={() => setViewState('3')}
+                    onClick={() => {
+                      setSubmitErr('')
+                      setShowRevisionForm(true)
+                    }}
                     className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-xl border-2 border-red-700 bg-white px-6 py-3 text-xs sm:text-sm font-semibold text-red-700 hover:bg-red-50 transition"
                   >
                     <AlertCircle size={17} className="text-red-700 shrink-0" />
@@ -626,7 +784,8 @@ export default function BeritaAcaraPage() {
 
                   <button
                     type="button"
-                    onClick={() => setViewState('4A')}
+                    onClick={handleConfirmBenar}
+                    disabled={submitting}
                     className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-xl bg-[#142f57] px-7 py-3 text-xs sm:text-sm font-semibold text-white hover:bg-[#0f2444] transition shadow-xs"
                   >
                     <CheckCircle2 size={17} />
@@ -637,9 +796,7 @@ export default function BeritaAcaraPage() {
             </div>
           )}
 
-          {/* ============================================================================ */}
-          {/* TAMPILAN 3: FORM REVISI TERBUKA                                              */}
-          {/* ============================================================================ */}
+          {/* TAMPILAN 3: FORM REVISI TERBUKA */}
           {viewState === '3' && (
             <div className="space-y-6">
               <div className="flex items-start gap-4 rounded-2xl border border-[#cce1f8] bg-[#ebf3fc] p-5 shadow-xs">
@@ -656,7 +813,7 @@ export default function BeritaAcaraPage() {
                 </div>
               </div>
 
-              <DocumentViewer />
+              <DocumentViewer html={viewerDoc.html} loading={docLoading} error={viewerDoc.error} />
 
               <form onSubmit={handleSendRevision} className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-xs">
                 <div className="bg-[#ebf3fc] border-b border-[#cce1f8] p-5 sm:p-6">
@@ -711,6 +868,7 @@ export default function BeritaAcaraPage() {
                   <div className="flex justify-end pt-2">
                     <button
                       type="submit"
+                      disabled={submitting}
                       className="flex items-center gap-2 rounded-xl bg-red-700 px-7 py-3 text-xs sm:text-sm font-semibold text-white hover:bg-red-800 transition shadow-xs"
                     >
                       <SendHorizontal size={17} />
@@ -722,9 +880,7 @@ export default function BeritaAcaraPage() {
             </div>
           )}
 
-          {/* ============================================================================ */}
-          {/* TAMPILAN 4A: KONFIRMASI BENAR                                                */}
-          {/* ============================================================================ */}
+          {/* TAMPILAN 4A: KONFIRMASI BENAR */}
           {viewState === '4A' && (
             <div className="space-y-6">
               <div className="rounded-2xl border border-emerald-500/80 border-l-[6px] border-l-emerald-600 bg-white p-6 shadow-xs flex flex-col md:flex-row items-center justify-between gap-5">
@@ -739,7 +895,8 @@ export default function BeritaAcaraPage() {
                     </p>
                     <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-900">
                       <Calendar size={15} className="text-emerald-600 shrink-0" />
-                      <span>16 Oktober 2026, 14:32:08 WIB</span>
+                      {/* TODO: endpoint belum ada — waktu konfirmasi tidak dikirim API, memakai updated_at pengajuan */}
+                      <span>{pengajuan?.updatedAt ? formatDate(pengajuan.updatedAt, true) : '-'}</span>
                     </div>
                   </div>
                 </div>
@@ -754,13 +911,11 @@ export default function BeritaAcaraPage() {
                 </button>
               </div>
 
-              <ProgressTracker activeStep={4} />
+              <ProgressTracker activeStep={activeStep} dates={dates} />
             </div>
           )}
 
-          {/* ============================================================================ */}
-          {/* TAMPILAN 4B: REVISI TERKIRIM                                                 */}
-          {/* ============================================================================ */}
+          {/* TAMPILAN 4B: REVISI TERKIRIM */}
           {viewState === '4B' && (
             <div className="space-y-6">
               <div className="rounded-2xl border border-slate-200 bg-gradient-to-r from-white via-white to-amber-50/80 p-6 shadow-xs flex flex-col sm:flex-row items-start justify-between gap-4">
@@ -781,13 +936,11 @@ export default function BeritaAcaraPage() {
                 </div>
               </div>
 
-              <ProgressTracker activeStep={3} />
+              <ProgressTracker activeStep={activeStep} dates={dates} />
             </div>
           )}
 
-          {/* ============================================================================ */}
-          {/* TAMPILAN 5: BERITA ACARA TERBIT & SAH                                        */}
-          {/* ============================================================================ */}
+          {/* TAMPILAN 5: BERITA ACARA TERBIT & SAH */}
           {viewState === '5' && (
             <div className="space-y-6">
               <div className="rounded-2xl bg-[#142f57] p-6 text-white shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
@@ -799,33 +952,37 @@ export default function BeritaAcaraPage() {
                 </div>
 
                 <div className="w-full md:w-auto shrink-0 rounded-2xl border border-white/20 bg-white/10 p-3.5 backdrop-blur-xs flex flex-col gap-2.5">
-                  <a
-                    href={draftBaPdf}
-                    download="Berita_Acara_Yudisium_TRPL.pdf"
-                    className="flex items-center justify-center gap-2 rounded-xl bg-[#FFD32A] px-5 py-2.5 text-xs font-bold text-[#8a6b00] hover:bg-amber-300 transition shadow-xs"
+                  <button
+                    type="button"
+                    disabled={downloading}
+                    onClick={() => handlePdf('download')}
+                    className="flex items-center justify-center gap-2 rounded-xl bg-[#FFD32A] px-5 py-2.5 text-xs font-bold text-[#8a6b00] hover:bg-amber-300 transition disabled:opacity-60"
                   >
-                    <Download size={16} className="text-[#8a6b00]" />
+                    {downloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} className="text-[#8a6b00]" />}
                     <span>Unduh Berita Acara (PDF)</span>
-                  </a>
+                  </button>
 
                   <button
                     type="button"
-                    onClick={() => {
-                      const printWin = window.open(draftBaPdf, '_blank')
-                      if (printWin) printWin.focus()
-                    }}
-                    className="flex items-center justify-center gap-2 rounded-xl bg-white/20 px-5 py-2.5 text-xs font-semibold text-white hover:bg-white/30 transition border border-white/20"
+                    disabled={downloading}
+                    onClick={() => handlePdf('open')}
+                    className="flex items-center justify-center gap-2 rounded-xl bg-white/20 px-5 py-2.5 text-xs font-semibold text-white hover:bg-white/30 transition disabled:opacity-60"
                   >
                     <Printer size={16} />
                     <span>Cetak Dokumen Resmi</span>
                   </button>
+                  {submitErr && <p className="text-[11px] font-medium text-red-200">{submitErr}</p>}
                 </div>
               </div>
 
-              <DocumentViewer title="Dokumen Resmi Berita Acara Rapat Yudisium" />
+              <DocumentViewer
+                title="Dokumen Resmi Berita Acara Rapat Yudisium"
+                html={viewerDoc.html}
+                loading={docLoading}
+                error={viewerDoc.error}
+              />
             </div>
           )}
-
         </div>
       </main>
     </div>

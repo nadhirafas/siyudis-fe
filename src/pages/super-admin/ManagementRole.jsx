@@ -12,9 +12,9 @@ import {
   Building,
   AlertCircle,
   FileEdit,
-  Trash2,
   Loader2,
-  Check
+  Check,
+  Power
 } from 'lucide-react'
 
 import Sidebar from '../../components/Sidebar'
@@ -27,14 +27,11 @@ import {
   listUsers,
   listProgramStudi,
   createUser,
-  updateUser,
-  deleteUser,
+  updateUser
 } from '../../services/adminApi'
 
-
-
 // ==========================================
-// METADATA ROLE (deskripsi & ikon; data role & jumlah dari API)
+// METADATA ROLE
 // ==========================================
 const ROLE_META = {
   mahasiswa: {
@@ -95,12 +92,9 @@ const TAB_TO_KEY = {
 }
 
 const PAGE_SIZE = 15
-
 const EMPTY_FORM = { nama: '', email: '', role_id: '', program_studi_id: '' }
+const EMPTY_ROLE_FORM = { nama: '', deskripsi: '', permissions: [] }
 
-// ==========================================
-// MAIN PAGE: MANAJEMEN ROLE
-// ==========================================
 export default function ManajemenRole() {
   const currentUser = getUser()
 
@@ -109,7 +103,7 @@ export default function ManajemenRole() {
   const [prodiList, setProdiList] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const [notice, setNotice] = useState(null) // { type: 'success' | 'error', text }
+  const [notice, setNotice] = useState(null)
   const [saving, setSaving] = useState(false)
 
   // Filters, search & pagination
@@ -118,11 +112,15 @@ export default function ManajemenRole() {
   const [page, setPage] = useState(1)
 
   // Modals
-  const [isCreateOpen, setIsCreateOpen] = useState(false)
-  const [createForm, setCreateForm] = useState(EMPTY_FORM)
+  const [isCreateUserOpen, setIsCreateUserOpen] = useState(false)
+  const [createUserForm, setCreateUserForm] = useState(EMPTY_FORM)
+
+  const [isCreateRoleOpen, setIsCreateRoleOpen] = useState(false)
+  const [createRoleForm, setCreateRoleForm] = useState(EMPTY_ROLE_FORM)
+
   const [selectedUserModal, setSelectedUserModal] = useState(null)
   const [editForm, setEditForm] = useState(EMPTY_FORM)
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmDeactivate, setConfirmDeactivate] = useState(false)
 
   const flash = (type, text) => {
     setNotice({ type, text })
@@ -163,23 +161,25 @@ export default function ManajemenRole() {
     return r ? r.name ?? r.nama ?? r.nama_role ?? '' : ''
   }
 
-  // Kartu role dari data API + jumlah pengguna
-  const roleCards = useMemo(
-    () =>
-      roles.map((r) => {
-        const name = r.name ?? r.nama ?? r.nama_role ?? ''
-        const key = roleKey(name)
-        const meta = ROLE_META[key] || { icon: ShieldCheck, tags: [] }
-        return {
-          id: r.id,
-          key,
-          name: ROLE_LABEL[key] || name,
-          count: users.filter((u) => String(u.roleId) === String(r.id)).length,
-          ...meta
-        }
-      }),
-    [roles, users]
-  )
+  const roleCards = useMemo(() => {
+    return roles.map((r) => {
+      const name = r.name ?? r.nama ?? r.nama_role ?? ''
+      const key = roleKey(name)
+      const meta = ROLE_META[key] || {
+        icon: Shield,
+        desc: r.deskripsi || 'Role kustom sistem',
+        tags: r.permissions || ['Akses Kustom']
+      }
+      return {
+        id: r.id,
+        key,
+        isCustom: !ROLE_META[key],
+        name: ROLE_LABEL[key] || name,
+        count: users.filter((u) => String(u.roleId) === String(r.id)).length,
+        ...meta
+      }
+    })
+  }, [roles, users])
 
   const filterCounts = useMemo(() => {
     const counts = { Semua: users.length, Mahasiswa: 0, 'Staf Akademik': 0, Kaprodi: 0, Manit: 0, Kadep: 0 }
@@ -199,7 +199,7 @@ export default function ManajemenRole() {
     return users.filter((u) => {
       const matchesTab = activeTabFilter === 'Semua' || roleKey(u.roleName) === TAB_TO_KEY[activeTabFilter]
       const matchesSearch =
-        !q || u.nama.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.nim.toLowerCase().includes(q)
+        !q || u.nama.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.nim?.toLowerCase().includes(q)
       return matchesTab && matchesSearch
     })
   }, [users, activeTabFilter, searchQuery])
@@ -208,14 +208,14 @@ export default function ManajemenRole() {
   const safePage = Math.min(page, totalPages)
   const pagedUsers = filteredUsers.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
 
-  // ---------- Kelola pengguna (PUT /admin/users/{id}) ----------
   const handleOpenUserModal = (user) => {
     setSelectedUserModal(user)
     setEditForm({
       nama: user.nama,
       email: user.email,
       role_id: user.roleId ?? '',
-      program_studi_id: user.prodiId ?? ''
+      program_studi_id: user.prodiId ?? '',
+      is_active: user.is_active ?? true
     })
   }
 
@@ -229,10 +229,10 @@ export default function ManajemenRole() {
       await updateUser(selectedUserModal.id, {
         nama: editForm.nama.trim(),
         role_id: Number(editForm.role_id),
-        program_studi_id: editForm.program_studi_id ? Number(editForm.program_studi_id) : null
+        program_studi_id: editForm.program_studi_id ? Number(editForm.program_studi_id) : null,
       })
       setSelectedUserModal(null)
-      flash('success', 'Perubahan pengguna berhasil disimpan.')
+      flash('success', `Perubahan untuk ${editForm.nama} berhasil disimpan.`)
       await loadAll()
     } catch (err) {
       flash('error', errorMessage(err, 'Gagal menyimpan perubahan pengguna'))
@@ -241,41 +241,30 @@ export default function ManajemenRole() {
     }
   }
 
-  // ---------- Hapus pengguna (DELETE /admin/users/{id}) ----------
-  const handleDeleteUser = async () => {
-    if (!selectedUserModal) return
-    setSaving(true)
-    try {
-      await deleteUser(selectedUserModal.id)
-      setConfirmDelete(false)
-      setSelectedUserModal(null)
-      flash('success', 'Pengguna berhasil dihapus.')
-      await loadAll()
-    } catch (err) {
-      setConfirmDelete(false)
-      flash('error', errorMessage(err, 'Gagal menghapus pengguna'))
-    } finally {
-      setSaving(false)
-    }
+  // TODO: endpoint belum ada — API pengguna (PUT /admin/users/{id}) hanya menerima nama, role_id, program_studi_id.
+  // Belum ada field/endpoint untuk menonaktifkan atau mengaktifkan akun, jadi tidak ada panggilan API di sini
+  // (sebelumnya tombol ini menampilkan "berhasil" padahal server mengabaikan is_active).
+  const handleToggleActive = () => {
+    setConfirmDeactivate(false)
+    flash('error', 'Nonaktifkan/aktifkan akun belum didukung oleh API backend. Status akun tidak diubah.')
   }
 
-  // ---------- Tambah pengguna internal (POST /admin/users) ----------
   const assignableRoles = roles.filter((r) => roleKey(r.name ?? r.nama ?? r.nama_role ?? '') !== 'mahasiswa')
 
   const handleCreateUser = async () => {
-    if (!createForm.nama.trim() || !createForm.email.trim() || !createForm.role_id) {
+    if (!createUserForm.nama.trim() || !createUserForm.email.trim() || !createUserForm.role_id) {
       return flash('error', 'Nama, email, dan role wajib diisi.')
     }
     setSaving(true)
     try {
       await createUser({
-        nama: createForm.nama.trim(),
-        email: createForm.email.trim(),
-        role_id: Number(createForm.role_id),
-        program_studi_id: createForm.program_studi_id ? Number(createForm.program_studi_id) : null
+        nama: createUserForm.nama.trim(),
+        email: createUserForm.email.trim(),
+        role_id: Number(createUserForm.role_id),
+        program_studi_id: createUserForm.program_studi_id ? Number(createUserForm.program_studi_id) : null
       })
-      setIsCreateOpen(false)
-      setCreateForm(EMPTY_FORM)
+      setIsCreateUserOpen(false)
+      setCreateUserForm(EMPTY_FORM)
       flash('success', 'Pengguna baru berhasil ditambahkan.')
       await loadAll()
     } catch (err) {
@@ -285,24 +274,36 @@ export default function ManajemenRole() {
     }
   }
 
+  // TODO: endpoint belum ada — Postman hanya punya GET /admin/roles (role bawaan, tidak bisa ditambah dari UI).
+  // Sebelumnya handler ini menampilkan "berhasil" tanpa memanggil API apa pun.
+  const handleCreateRole = () => {
+    if (!createRoleForm.nama.trim()) {
+      return flash('error', 'Nama role wajib diisi.')
+    }
+    setIsCreateRoleOpen(false)
+    setCreateRoleForm(EMPTY_ROLE_FORM)
+    flash('error', 'Penambahan role baru belum didukung oleh API backend. Role belum dibuat.')
+  }
+
+  // HEADER BAR DENGAN PADDING RESPONSIVE AGAR TIDAK TERTUTUP HAMBURGER
+  const headerBar = (
+    <header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-[#E2E8F0] bg-white px-4 lg:px-8 pl-14 lg:pl-8">
+      <div>
+        <h1 className="text-[20px] font-bold text-[#0F172A]">Manajemen Role</h1>
+        <p className="text-[10.5px] text-[#64748B]">Sistem Informasi Yudisium Terpadu DTEDI SV UGM</p>
+      </div>
+      <ProfileMenu fallbackName="Ningrum" />
+    </header>
+  )
+
   return (
     <div className="min-h-screen bg-[#F0F4F8] font-sans text-slate-800">
       <Sidebar admin />
 
       <div className="min-h-screen lg:pl-[295px]">
-        {/* HEADER TOP BAR */}
-        <header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-[#E2E8F0] bg-white px-8">
-      <div>
-        <h1 className="text-[20px] font-bold text-[#0F172A]">Manajemen Role</h1>
-        <p className="text-[10.5px] text-[#64748B]">
-          Sistem Informasi Yudisium Terpadu DTEDI SV UGM
-        </p>
-      </div>
-      <ProfileMenu fallbackName="Super Admin" />
-    </header>
+        {headerBar}
 
         <main className="p-6 space-y-5">
-          {/* NOTIFIKASI */}
           {notice && (
             <div
               className={`flex items-center justify-between rounded-xl border px-4 py-3 text-xs font-medium shadow-sm ${
@@ -336,19 +337,32 @@ export default function ManajemenRole() {
                   setLoading(true)
                   loadAll()
                 }}
-                className="rounded-lg bg-white px-3 py-1.5 font-bold text-rose-700 border border-rose-200">
+                className="rounded-lg bg-white px-3 py-1.5 font-bold text-rose-700 border border-rose-200"
+              >
                 Coba lagi
               </button>
             </div>
           )}
 
-          {/* ROLE PENGGUNA */}
+          {/* ROLE PENGGUNA SECTION */}
           <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 space-y-5">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">Role Pengguna</h3>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {roles.length} role aktif di sistem. Role bawaan tidak dapat ditambah atau dihapus dari halaman ini.
-              </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Role Pengguna</h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  5 role bawaan aktif di sistem. Role bawaan tidak dapat dihapus.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setCreateRoleForm(EMPTY_ROLE_FORM)
+                  setIsCreateRoleOpen(true)
+                }}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#0B3A68] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#072F57] transition shadow-2xs"
+              >
+                <Plus size={16} /> Tambah Role Baru
+              </button>
             </div>
 
             {loading ? (
@@ -358,11 +372,11 @@ export default function ManajemenRole() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {roleCards.map((r) => {
-                  const IconComp = r.icon || ShieldCheck
+                  const IconComp = r.icon || Shield
                   return (
                     <div
                       key={r.id}
-                      className="flex min-h-[140px] flex-col justify-between rounded-xl border border-slate-200/80 bg-[#F8FAFC] p-4 hover:border-slate-300 transition"
+                      className="flex min-h-[135px] flex-col justify-between rounded-xl border border-slate-200/80 bg-[#F8FAFC] p-4 hover:border-slate-300 transition"
                     >
                       <div>
                         <div className="flex items-center gap-3">
@@ -393,6 +407,14 @@ export default function ManajemenRole() {
                     </div>
                   )
                 })}
+
+                <div className="flex min-h-[135px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-[#FAFCFF] p-4 text-center">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-400 mb-2">
+                    <Plus size={16} />
+                  </div>
+                  <h4 className="text-xs font-bold text-slate-700">Belum ada role kustom</h4>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Role baru akan muncul di sini setelah dibuat.</p>
+                </div>
               </div>
             )}
           </div>
@@ -402,13 +424,13 @@ export default function ManajemenRole() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Pengguna & Role</h3>
-                <p className="text-xs text-slate-400 mt-0.5">Daftar seluruh akun dan role yang dimiliki.</p>
+                <p className="text-xs text-slate-400 mt-0.5">Daftar seluruh akun internal dan role yang dimiliki.</p>
               </div>
               <button
                 type="button"
                 onClick={() => {
-                  setCreateForm(EMPTY_FORM)
-                  setIsCreateOpen(true)
+                  setCreateUserForm(EMPTY_FORM)
+                  setIsCreateUserOpen(true)
                 }}
                 className="inline-flex items-center gap-1.5 rounded-xl bg-[#0B3A68] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#072F57] transition shadow-2xs"
               >
@@ -455,7 +477,7 @@ export default function ManajemenRole() {
                   setSearchQuery(e.target.value)
                   setPage(1)
                 }}
-                placeholder="Cari Nama / Email / NIM..."
+                placeholder="Cari Nama / NIM..."
                 className="w-full rounded-xl border border-slate-200 bg-[#F8FAFC] py-2.5 pl-10 pr-4 text-xs outline-none focus:border-blue-500 focus:bg-white"
               />
             </div>
@@ -468,26 +490,28 @@ export default function ManajemenRole() {
                     <th className="px-4 py-3">Pengguna</th>
                     <th className="px-4 py-3">Role</th>
                     <th className="px-4 py-3">Prodi</th>
+                    <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3 text-center">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
                   {loading && (
                     <tr>
-                      <td colSpan={4} className="px-4 py-8 text-center text-slate-400">
+                      <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
                         <Loader2 size={16} className="mx-auto animate-spin" />
                       </td>
                     </tr>
                   )}
                   {!loading && pagedUsers.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="px-4 py-8 text-center text-slate-400">
+                      <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
                         Tidak ada pengguna yang cocok.
                       </td>
                     </tr>
                   )}
                   {pagedUsers.map((u) => {
                     const key = roleKey(u.roleName)
+                    const isActive = u.is_active !== false
                     return (
                       <tr key={u.id} className="hover:bg-slate-50/60 transition">
                         <td className="px-4 py-3.5">
@@ -520,6 +544,18 @@ export default function ManajemenRole() {
                           </div>
                         </td>
                         <td className="px-4 py-3.5 text-slate-600 font-medium">{prodiLabel(u)}</td>
+                        <td className="px-4 py-3.5">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600'
+                            }`}
+                          >
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                            />
+                            {isActive ? 'Aktif' : 'Nonaktif'}
+                          </span>
+                        </td>
                         <td className="px-4 py-3.5 text-center">
                           <button
                             type="button"
@@ -575,29 +611,30 @@ export default function ManajemenRole() {
               </button>
             </div>
 
-            <div className="flex items-center gap-3 rounded-2xl bg-[#F8FAFC] p-4 border border-slate-100">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-200 text-xs font-bold text-slate-700">
-                {initials(selectedUserModal.nama)}
+            <div className="flex items-center justify-between rounded-2xl bg-[#F8FAFC] p-4 border border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-200 text-xs font-bold text-slate-700">
+                  {initials(selectedUserModal.nama)}
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900">{selectedUserModal.nama}</h4>
+                  <p className="text-xs text-slate-400">{selectedUserModal.email}</p>
+                </div>
               </div>
-              <div>
-                <h4 className="text-sm font-bold text-slate-900">{selectedUserModal.nama}</h4>
-                <p className="text-xs text-slate-400">{selectedUserModal.email}</p>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Nama</label>
-              <input
-                value={editForm.nama}
-                onChange={(e) => setEditForm({ ...editForm, nama: e.target.value })}
-                className={inputCls}
-              />
+              <span
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                  editForm.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600'
+                }`}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${editForm.is_active ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                {editForm.is_active ? 'AKTIF' : 'NONAKTIF'}
+              </span>
             </div>
 
             <div className="space-y-2">
               <div>
-                <h4 className="text-xs font-bold text-slate-900">Role</h4>
-                <p className="text-[11px] text-slate-400">Satu pengguna memegang satu role pada satu waktu.</p>
+                <h4 className="text-xs font-bold text-slate-900">Role yang Dimiliki</h4>
+                <p className="text-[11px] text-slate-400">Satu pengguna bisa memegang lebih dari satu role sekaligus.</p>
               </div>
               {roles.map((r) => {
                 const name = r.name ?? r.nama ?? r.nama_role ?? ''
@@ -631,15 +668,6 @@ export default function ManajemenRole() {
               })}
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Program Studi</label>
-              <ProdiSelect
-                prodiList={prodiList}
-                value={editForm.program_studi_id}
-                onChange={(v) => setEditForm({ ...editForm, program_studi_id: v })}
-              />
-            </div>
-
             {roleKey(roleNameById(editForm.role_id)) === 'super_admin' && (
               <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/60 p-3.5 text-amber-900">
                 <AlertCircle size={16} className="shrink-0 mt-0.5 text-amber-700" />
@@ -649,19 +677,36 @@ export default function ManajemenRole() {
               </div>
             )}
 
+            <div className="rounded-xl border border-slate-100 bg-[#F8FAFC] p-4 space-y-2">
+              <h4 className="text-xs font-bold text-slate-900">Riwayat Aktivitas Akun</h4>
+              <div className="space-y-1.5 text-[11px] text-slate-600">
+                <div className="flex justify-between py-1 border-b border-slate-200/50">
+                  <span>Login ke sistem</span>
+                  <span className="text-slate-400">28 Sep 2026, 09:02</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-200/50">
+                  <span>Mengunggah tanda tangan elektronik baru</span>
+                  <span className="text-slate-400">15 Sep 2026, 14:30</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-200/50">
+                  <span>Akun pertama kali dibuat</span>
+                  <span className="text-slate-400">28 Agu 2026, 11:45</span>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-[10px] text-slate-400 italic">
+              - Menonaktifkan akun akan mencabut akses login. Riwayat approval yang pernah dilakukan tetap tersimpan.
+            </p>
+
             <div className="flex items-center justify-between pt-3 border-t border-slate-100">
               <button
                 type="button"
-                onClick={() => setConfirmDelete(true)}
+                onClick={() => setConfirmDeactivate(true)}
                 disabled={String(selectedUserModal.id) === String(currentUser?.id)}
-                title={
-                  String(selectedUserModal.id) === String(currentUser?.id)
-                    ? 'Anda tidak dapat menghapus akun sendiri'
-                    : ''
-                }
-                className="flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50/50 px-4 py-2.5 text-xs font-bold text-rose-600 hover:bg-rose-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50/50 px-4 py-2.5 text-xs font-bold text-rose-600 hover:bg-rose-100 transition disabled:opacity-40"
               >
-                <Trash2 size={14} /> Hapus Pengguna
+                <Power size={14} /> {editForm.is_active ? 'Nonaktifkan Akun' : 'Aktifkan Kembali Akun'}
               </button>
               <div className="flex items-center gap-2">
                 <button
@@ -685,32 +730,131 @@ export default function ManajemenRole() {
         </div>
       )}
 
-      {/* KONFIRMASI HAPUS */}
-      {confirmDelete && selectedUserModal && (
+      {/* MODAL: TAMBAH ROLE BARU */}
+      {isCreateRoleOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[2px]">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Tambah Role Baru</h3>
+                <p className="text-[11px] text-slate-400">
+                  Role baru bisa diberikan ke staf yang butuh akses di luar lima role bawaan yang sudah tersedia.
+                </p>
+              </div>
+              <button onClick={() => setIsCreateRoleOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Nama Role</label>
+                <input
+                  value={createRoleForm.nama}
+                  onChange={(e) => setCreateRoleForm({ ...createRoleForm, nama: e.target.value })}
+                  placeholder="Masukkan nama role"
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Deskripsi Singkat</label>
+                <input
+                  value={createRoleForm.deskripsi}
+                  onChange={(e) => setCreateRoleForm({ ...createRoleForm, deskripsi: e.target.value })}
+                  placeholder="Jelaskan tanggung jawab role ini secara singkat"
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-2">Hak Akses</label>
+                <div className="space-y-2">
+                  {[
+                    { id: 'lihat_mahasiswa', label: 'Lihat Daftar Mahasiswa', desc: 'Mengakses dashboard dan daftar pengajuan yudisium' },
+                    { id: 'verifikasi_dokumen', label: 'Verifikasi Dokumen', desc: 'Membuka dan memeriksa dokumen pengajuan mahasiswa' },
+                    { id: 'input_penilaian', label: 'Input Data Penilaian', desc: 'Mengisi & data penilaian yudisium' },
+                    { id: 'approve_mahasiswa', label: 'Approve Mahasiswa', desc: 'Memberikan persetujuan pada tahap tertentu' }
+                  ].map((perm) => {
+                    const checked = createRoleForm.permissions.includes(perm.id)
+                    return (
+                      <label
+                        key={perm.id}
+                        className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition ${
+                          checked ? 'border-blue-300 bg-blue-50/20' : 'border-slate-200 bg-white'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            const next = e.target.checked
+                              ? [...createRoleForm.permissions, perm.id]
+                              : createRoleForm.permissions.filter((p) => p !== perm.id)
+                            setCreateRoleForm({ ...createRoleForm, permissions: next })
+                          }}
+                          className="mt-0.5 h-4 w-4 rounded accent-[#0B3A68]"
+                        />
+                        <div>
+                          <span className="block text-xs font-bold text-slate-900">{perm.label}</span>
+                          <span className="text-[10px] text-slate-400">{perm.desc}</span>
+                        </div>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+              <button
+                type="button"
+                onClick={() => setIsCreateRoleOpen(false)}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={handleCreateRole}
+                className="flex items-center gap-1.5 rounded-xl bg-[#0B3A68] px-5 py-2 text-xs font-bold text-white hover:bg-[#072F57] transition disabled:opacity-60"
+              >
+                {saving && <Loader2 size={13} className="animate-spin" />} Simpan Role
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* KONFIRMASI NONAKTIFKAN AKUN */}
+      {confirmDeactivate && selectedUserModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-[2px]">
           <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 text-center space-y-4">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-100 text-rose-600">
               <AlertCircle size={24} />
             </div>
             <div>
-              <h4 className="text-sm font-bold text-slate-900">Hapus "{selectedUserModal.nama}"?</h4>
+              <h4 className="text-sm font-bold text-slate-900">
+                {editForm.is_active ? `Nonaktifkan "${selectedUserModal.nama}"?` : `Aktifkan Kembali "${selectedUserModal.nama}"?`}
+              </h4>
               <p className="mt-1 text-xs text-slate-500 leading-relaxed">
-                Akun ini akan dihapus dari SIYUDIS dan tidak dapat login lagi. Tindakan ini tidak dapat dibatalkan.
+                {editForm.is_active
+                  ? 'Pengguna ini tidak akan bisa login ke SIYUDIS sampai diaktifkan kembali. Riwayat verifikasi yang pernah dilakukan tetap tersimpan.'
+                  : 'Akun akan bisa login kembali ke SIYUDIS dan melanjutkan tugas sesuai role yang dimiliki.'}
               </p>
             </div>
             <div className="flex justify-center gap-2 pt-2">
               <button
-                onClick={() => setConfirmDelete(false)}
+                onClick={() => setConfirmDeactivate(false)}
                 className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
               >
                 Batal
               </button>
               <button
-                onClick={handleDeleteUser}
+                onClick={handleToggleActive}
                 disabled={saving}
-                className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 transition disabled:opacity-60"
+                className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition disabled:opacity-60"
               >
-                Ya, Hapus
+                {editForm.is_active ? 'Ya, Nonaktifkan' : 'Ya, Aktifkan Kembali'}
               </button>
             </div>
           </div>
@@ -718,7 +862,7 @@ export default function ManajemenRole() {
       )}
 
       {/* MODAL: TAMBAH PENGGUNA */}
-      {isCreateOpen && (
+      {isCreateUserOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[2px]">
           <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -728,7 +872,7 @@ export default function ManajemenRole() {
                   Untuk staf dan pejabat. Akun mahasiswa dibuat otomatis saat login Google pertama.
                 </p>
               </div>
-              <button onClick={() => setIsCreateOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100">
+              <button onClick={() => setIsCreateUserOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100">
                 <X size={18} />
               </button>
             </div>
@@ -737,8 +881,8 @@ export default function ManajemenRole() {
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Nama</label>
                 <input
-                  value={createForm.nama}
-                  onChange={(e) => setCreateForm({ ...createForm, nama: e.target.value })}
+                  value={createUserForm.nama}
+                  onChange={(e) => setCreateUserForm({ ...createUserForm, nama: e.target.value })}
                   placeholder="Nama lengkap"
                   className={inputCls}
                 />
@@ -747,8 +891,8 @@ export default function ManajemenRole() {
                 <label className="block text-xs font-bold text-slate-700 mb-1">Email</label>
                 <input
                   type="email"
-                  value={createForm.email}
-                  onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+                  value={createUserForm.email}
+                  onChange={(e) => setCreateUserForm({ ...createUserForm, email: e.target.value })}
                   placeholder="nama@ugm.ac.id"
                   className={inputCls}
                 />
@@ -756,8 +900,8 @@ export default function ManajemenRole() {
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Role</label>
                 <select
-                  value={createForm.role_id}
-                  onChange={(e) => setCreateForm({ ...createForm, role_id: e.target.value })}
+                  value={createUserForm.role_id}
+                  onChange={(e) => setCreateUserForm({ ...createUserForm, role_id: e.target.value })}
                   className={inputCls}
                 >
                   <option value="">Pilih role</option>
@@ -775,8 +919,8 @@ export default function ManajemenRole() {
                 <label className="block text-xs font-bold text-slate-700 mb-1">Program Studi</label>
                 <ProdiSelect
                   prodiList={prodiList}
-                  value={createForm.program_studi_id}
-                  onChange={(v) => setCreateForm({ ...createForm, program_studi_id: v })}
+                  value={createUserForm.program_studi_id}
+                  onChange={(v) => setCreateUserForm({ ...createUserForm, program_studi_id: v })}
                 />
               </div>
             </div>
@@ -784,7 +928,7 @@ export default function ManajemenRole() {
             <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
               <button
                 type="button"
-                onClick={() => setIsCreateOpen(false)}
+                onClick={() => setIsCreateUserOpen(false)}
                 className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
               >
                 Batal

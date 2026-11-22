@@ -132,9 +132,9 @@ export const DASHBOARD_BY_CATEGORY = {
   mahasiswa: '/dashboard',
   staf_akademik: '/admin/dashboard',
   super_admin: '/super-admin/dashboard',
-  kaprodi: '/kepala-prodi/dashboard',
-  manit: '/management/dashboard',
-  kadep: '/management/dashboard',
+  kaprodi: '/kaprodi/dashboard',
+  manit: '/manit/dashboard',
+  kadep: '/kadep/dashboard',
 }
 
 export function updateUser(updatedUserData) {

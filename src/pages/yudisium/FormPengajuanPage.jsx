@@ -1,7 +1,5 @@
 import { useState, Fragment } from 'react'
-
 import { useNavigate } from 'react-router-dom'
-
 import {
   Home,
   FileText,
@@ -24,9 +22,13 @@ import {
   Send,
   Menu,
   X,
+  Loader2,
 } from 'lucide-react'
 
-import { getUser, clearUser } from '../../services/auth'
+import { clearUser, logout } from '../../services/auth'
+import { formatDate } from '../../services/normalize'
+import { isWhatsappField } from '../../services/mahasiswaStatus'
+import useYudisiumForm from '../../hooks/useYudisiumForm'
 import ugmLogo from '../../assets/ugm-logo.png'
 
 function renderDescription(description) {
@@ -56,96 +58,6 @@ function linkifyText(text) {
     )
   })
 }
-
-const documents = [
-  { id: 1, title: 'Form Pengajuan Yudisium', description: 'Unduh dan lengkapi template form pengajuan yudisium resmi DTEDI yang telah ditandatangani.', accept: '.pdf', type: 'PDF' },
-  { id: 2, title: 'Form Pembatalan Mata Kuliah Pilihan', description: 'Unduh dan lengkapi template form pembatalan mata kuliah pilihan yang telah ditandatangani mahasiswa dan ketua program studi.', accept: '.pdf,.png', type: 'PDF/PNG' },
-  { id: 3, title: 'Form Checklist Judul Proyek Akhir', description: 'Kesesuaian tata bahasa judul Proyek Akhir (ID & EN) tervalidasi pembimbing.', accept: '.pdf,.png', type: 'PDF/PNG' },
-  {
-    id: 4,
-    title: 'Pas Photo',
-    description: (
-      <div>
-        <p className="mb-1.5">Pas Photo 4×6 latar biru (1 lembar). Ketentuan:</p>
-        <ul className="list-disc pl-4 space-y-1 text-gray-600">
-          <li>Kemeja putih, blazer/jas hitam (bukan almamater).</li>
-          <li>Background BIRU tua.</li>
-          <li>Tidak memakai kacamata hitam.</li>
-          <li>Foto asli, tajam, tidak kabur (bukan hasil scan/repro).</li>
-        </ul>
-      </div>
-    ),
-    accept: '.jpg,.jpeg,.png',
-    type: 'JPG/PNG',
-  },
-  { id: 5, title: 'Transkrip Nilai Sementara', description: 'Transkrip nilai diambil dari SIMASTER, dan wajib mengisi form http://ugm.id/ProyekAkhirDTEDI sebagai syarat pemrosesan/terbitnya nilai PA, dan apabila terdapat nilai kosong/T, laporkan kepada Bagian Akademik.', accept: '.pdf', type: 'PDF' },
-  { id: 6, title: 'Surat Tanda Terima Menyerahkan Skripsi dan Bebas Perpustakaan UGM.', description: 'Melakukan unggah Proyek Akhir secara mandiri di https://simaster.ugm.ac.id, dengan panduan tersedia di https://lib.ugm.ac.id/panduan-unggah-mandiri.', accept: '.pdf,.png', type: 'PDF/PNG' },
-  { id: 7, title: 'Ijazah Terakhir', description: 'Pindaian ijazah terakhir, bukan sertifikat hasil ujian.', accept: '.pdf,.png', type: 'PDF/PNG' },
-  { id: 8, title: 'Sertifikat PPSMB', description: 'Pindaian sertifikat Pelatihan Pembelajar Sukses bagi Mahasiswa Baru.', accept: '.pdf,.png', type: 'PDF/PNG' },
-  {
-    id: 9,
-    title: 'Hasil Cek Plagiasi',
-    description: (
-      <div>
-        <p className="mb-1.5">Hasil cek plagiasi harus memenuhi:</p>
-        <ul className="list-disc pl-4 space-y-1 text-gray-600">
-          <li>Persentase kemiripan maksimal 25%.</li>
-          <li>Ditandatangani dosen pembimbing tugas akhir (DPTA).</li>
-        </ul>
-      </div>
-    ),
-    accept: '.pdf,.png',
-    type: 'PDF/PNG',
-  },
-  {
-    id: 10,
-    title: 'Sertifikat Kemampuan Bahasa Inggris',
-    description: (
-      <>
-        Skor minimal: TEVoCS≥60 / AcEPT≥209 / IELTS≥4.5 / TOEIC≥495 / TOEFL IBT≥52 / TOEFL
-        ITP≥453. Belum memenuhi?{' '}
-        <a
-          href="https://tedi.sv.ugm.ac.id/id/2026/08/07/panduan-syarat-bahasa-inggris-untuk-yudisium-bagi-angkatan-2020-2023/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-[#1f3d6d] underline hover:text-[#0f2038]"
-        >
-          Lihat panduan
-        </a>
-        . Lolos PKM: TEVoCS berapa pun berlaku. Substitusi lain: Pengurus/Panitia/Juara Lomba
-        (maks 5; Nasional=1, Universitas=2, SV=3, Departemen=5).
-      </>
-    ),
-    accept: '.pdf,.png',
-    type: 'PDF/PNG',
-  },
-  { id: 11, title: 'Sertifikat Kompetensi', description: 'Wajib untuk prodi TRI, opsional untuk prodi lain. Minimal level associate, dengan skor hasil dan tanggal berlaku yang ditunjukkan, serta dicantumkan dalam Berita Acara Yudisium (maksimal 5 sertifikat).', accept: '.pdf,.png', type: 'PDF/PNG', badge: 'Wajib TRI', optionalBadge: 'Prodi Lain Opsional' },
-  { id: 12, title: 'Lembar Halaman Pengesahan', description: 'Pindaian lembar pengesahan bertandatangan lengkap penguji, pembimbing, dan Kepala Departemen DTEDI.', accept: '.pdf,.png', type: 'PDF/PNG' },
-  {
-    id: 13,
-    title: 'Unggah Draft Publikasi/Makalah',
-    description: (
-      <div className="space-y-2">
-        <p>
-          <strong className="font-bold text-slate-800">Angkatan 2021 &amp; sebelumnya:</strong>{' '}
-          <span className="text-gray-600">Prosiding konferensi, HAKI, atau jurnal.</span>
-        </p>
-        <p>
-          <strong className="font-bold text-slate-800">Angkatan 2022 &amp; seterusnya:</strong>{' '}
-          <span className="text-gray-600">Draft publikasi yang disetujui dosen pembimbing.</span>
-        </p>
-        <ul className="list-disc pl-4 space-y-1 text-gray-600">
-          <li>TRI, TRIK &amp; TRPL: draft jurnal acc pembimbing</li>
-          <li>TRE: wajib submit jurnal</li>
-        </ul>
-      </div>
-    ),
-    accept: '.pdf,.png',
-    type: 'PDF/PNG',
-  },
-  { id: 14, title: 'Transkrip Nilai D3', description: 'Transkrip nilai D3 untuk mahasiswa jalur alih program.', accept: '.pdf,.png', type: 'PDF/PNG', notApplicable: true },
-  { id: 15, title: 'Surat Bebas Lab', description: 'Keterangan pengembalian alat & kebersihan laboratorium.', accept: '.pdf,.png', type: 'PDF/PNG', badge: 'Wajib TRI' },
-]
 
 function Sidebar({ isOpen, onClose }) {
   const navigate = useNavigate()
@@ -231,19 +143,25 @@ function Sidebar({ isOpen, onClose }) {
   )
 }
 
-function Header({ onOpenSidebar }) {
+function Header({ onOpenSidebar, user }) {
   const navigate = useNavigate()
-
-  const [user] = useState(
-    () => getUser() || { name: 'Raihananta Khoiril Anam Pitoyo', email: 'raihananta.k@mail.ugm.ac.id', photo: null },
-  )
   const [profileOpen, setProfileOpen] = useState(false)
 
-  const displayName = user?.name || 'Raihananta Khoiril Anam Pitoyo'
-  const email = user?.email || 'raihananta.k@mail.ugm.ac.id'
+  const displayName = user?.nama || user?.name || 'Mahasiswa'
+  const email = user?.email || '-'
+  const savedPhoto =
+    localStorage.getItem(`profile_photo_${email}`) ||
+    user?.avatar ||
+    user?.photo ||
+    user?.foto ||
+    null
 
-  const handleLogout = () => {
-    clearUser()
+  const handleLogout = async () => {
+    try {
+      await logout()
+    } catch {
+      clearUser()
+    }
     setProfileOpen(false)
     navigate('/')
   }
@@ -278,8 +196,8 @@ function Header({ onOpenSidebar }) {
           onClick={() => setProfileOpen((open) => !open)}
           className="flex items-center gap-2.5 rounded-full py-1 px-1.5 hover:bg-gray-50 transition"
         >
-          {user?.photo ? (
-            <img src={user.photo} alt="" className="h-9 w-9 lg:h-10 lg:w-10 rounded-full object-cover" />
+          {savedPhoto ? (
+            <img src={savedPhoto} alt="" className="h-9 w-9 lg:h-10 lg:w-10 rounded-full object-cover" />
           ) : (
             <div className="h-9 w-9 lg:h-10 lg:w-10 shrink-0">
               <DefaultAvatarIcon />
@@ -302,8 +220,8 @@ function Header({ onOpenSidebar }) {
             <div className="flex flex-col items-center py-5">
               <div className="relative flex items-center justify-center">
                 <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-full border-[5px] border-[#e8edf5] bg-[#c7cbd1] flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
-                  {user?.photo ? (
-                    <img src={user.photo} alt="" className="h-full w-full object-cover" />
+                  {savedPhoto ? (
+                    <img src={savedPhoto} alt="" className="h-full w-full object-cover" />
                   ) : (
                     <DefaultAvatarIcon />
                   )}
@@ -319,7 +237,8 @@ function Header({ onOpenSidebar }) {
             <div className="border-t border-gray-100 pt-3 space-y-1.5">
               <button
                 type="button"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation()
                   setProfileOpen(false)
                   navigate('/profile')
                 }}
@@ -385,7 +304,7 @@ function DocumentCard({ document, file, error, disabled, isClosed, onFileChange,
       <div className="flex min-h-[322px] flex-col rounded-2xl border border-[#dbe1ef] bg-[#f0f3fc] p-5">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#dce6fb] text-sm font-semibold text-[#8a6b00]">
-            {String(document.id).padStart(2, '0')}
+            {String(document.no ?? document.id).padStart(2, '0')}
           </div>
           <div className="min-w-0">
             <h3 className="font-semibold leading-5 text-gray-900">{document.title}</h3>
@@ -422,7 +341,7 @@ function DocumentCard({ document, file, error, disabled, isClosed, onFileChange,
             error ? 'bg-red-50 text-red-500' : 'bg-[#dce6fb] text-[#8a6b00]'
           }`}
         >
-          {String(document.id).padStart(2, '0')}
+          {String(document.no ?? document.id).padStart(2, '0')}
         </div>
 
         <div className="min-w-0">
@@ -565,9 +484,15 @@ function SelectField({ label, value, onChange, onBlur, error, placeholder, optio
           }`}
         >
           <option value="">{placeholder}</option>
-          {options.map((opt) => (
-            <option key={opt}>{opt}</option>
-          ))}
+          {options.map((opt) =>
+            typeof opt === 'string' ? (
+              <option key={opt}>{opt}</option>
+            ) : (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            )
+          )}
         </select>
         <ChevronDown
           size={18}
@@ -588,75 +513,48 @@ export default function FormPengajuanPage() {
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  // STATE PENDAFTARAN (false = Terbuka, true = Ditutup)
-  const [isClosed] = useState(false)
+  // Profil, form aktif, periode, validasi, upload berkas, dan submit semuanya dari API lewat hook ini
+  const {
+    user,
+    loading,
+    loadError,
+    event,
+    isClosed: formClosed,
+    profile,
+    setProfileField,
+    changeProdi,
+    changingProdi,
+    prodiOptions,
+    textFields,
+    documents,
+    values,
+    setValue,
+    files,
+    setFile,
+    fileErrors,
+    setFileError,
+    integrityChecked,
+    setIntegrityChecked,
+    markTouched,
+    fieldError,
+    canSubmit,
+    footerState,
+    submitting,
+    submitError,
+    submit,
+  } = useYudisiumForm('create')
 
-  const [files, setFiles] = useState({})
-  const [errors, setErrors] = useState({})
-  const [form, setForm] = useState({
-    name: '',
-    nim: '',
-    prodi: '',
-    dosen: '',
-    whatsapp: '',
-    video: '',
-  })
-  const [integrityChecked, setIntegrityChecked] = useState(false)
-  const [touched, setTouched] = useState({})
-  const [submitAttempted, setSubmitAttempted] = useState(false)
-
-  const [isAlihProgram] = useState(false)
-
-  const handleFileChange = (id, file) => setFiles((prev) => ({ ...prev, [id]: file }))
-  const handleErrorChange = (id, message) => setErrors((prev) => ({ ...prev, [id]: message }))
-  const markTouched = (field) => setTouched((prev) => ({ ...prev, [field]: true }))
-
-  const requiredDocuments = documents.filter((document) => {
-    if (document.notApplicable && !isAlihProgram) return false
-    if (document.badge === 'Wajib TRI') return false
-    return true
-  })
-
-  const uploadedCount = requiredDocuments.filter((document) => files[document.id]).length
-  const allDocumentsUploaded = uploadedCount === requiredDocuments.length
-
-  const hasDocumentError = Object.values(errors).some(Boolean)
-  const isWhatsappValid = /^8\d{8,12}$/.test(form.whatsapp)
-
-  const allFieldsFilled = Boolean(
-    form.name.trim() && form.nim.trim() && form.prodi && form.dosen && isWhatsappValid && form.video.trim(),
-  )
-
-  const canSubmit = !isClosed && allFieldsFilled && allDocumentsUploaded && !hasDocumentError && integrityChecked
-
-  const showErr = (field) => touched[field] || submitAttempted
-  const fieldError = {
-    name: showErr('name') && !form.name.trim() ? 'Kolom ini wajib diisi.' : null,
-    nim: showErr('nim') && !form.nim.trim() ? 'Kolom ini wajib diisi.' : null,
-    prodi: showErr('prodi') && !form.prodi ? 'Pilih salah satu program studi.' : null,
-    dosen: showErr('dosen') && !form.dosen ? 'Pilih dosen pembimbing.' : null,
-    whatsapp:
-      showErr('whatsapp') && !isWhatsappValid
-        ? 'Kolom ini wajib diisi dengan nomor WhatsApp aktif yang valid.'
-        : null,
-    video: showErr('video') && !form.video.trim() ? 'Kolom ini wajib diisi.' : null,
-  }
-
-  const anyFieldError = Object.values(fieldError).some(Boolean)
-  const hasError = hasDocumentError || anyFieldError
-  const footerState = canSubmit ? 'valid' : hasError ? 'error' : 'empty'
+  // Selama data masih dimuat, jangan tampilkan status "Ditutup"
+  const isClosed = formClosed && !loading
 
   return (
     <div className="min-h-screen bg-[#EEF3F8] text-[#111827]">
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <Header onOpenSidebar={() => setSidebarOpen(true)} />
+      <Header onOpenSidebar={() => setSidebarOpen(true)} user={user} />
 
       <main className="ml-0 lg:ml-[272px] pt-[88px]">
         <div className="mx-auto max-w-[1090px] px-4 sm:px-7 py-6 sm:py-8 space-y-6">
-          
-          {/* ========================================================= */}
-          {/* SECTION HEADER FORMULIR & BANNER PERIODE                   */}
-          {/* ========================================================= */}
+          {/* SECTION HEADER FORMULIR & BANNER PERIODE */}
           <section className="space-y-4">
             <div className="rounded-2xl bg-white p-5 sm:p-8 shadow-sm">
               <h2 className="text-2xl sm:text-3xl font-bold text-gray-950">Formulir Pengajuan Yudisium</h2>
@@ -666,7 +564,6 @@ export default function FormPengajuanPage() {
               </p>
             </div>
 
-            {/* BANNER STATUS PERIODE PENDAFTARAN */}
             {isClosed ? (
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 rounded-2xl border border-slate-200 bg-[#f1f5f9] p-5 shadow-xs">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-200/80 text-slate-600">
@@ -675,7 +572,7 @@ export default function FormPengajuanPage() {
                 <div>
                   <h4 className="text-sm font-bold text-slate-900">Pendaftaran Yudisium Saat Ini Sedang Ditutup</h4>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Pendaftaran yudisium periode sebelumnya telah berakhir dan akan dibuka kembali sesuai jadwal dari Bagian Akademik.
+                    Belum ada periode yang aktif, atau periode sebelumnya telah berakhir. Pendaftaran akan dibuka kembali sesuai jadwal dari Bagian Akademik.
                   </p>
                 </div>
               </div>
@@ -685,18 +582,30 @@ export default function FormPengajuanPage() {
                   <Clock size={20} />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-slate-900">Periode Oktober 2026 sedang dibuka</h4>
+                  <h4 className="text-sm font-bold text-slate-900">{`Periode ${event?.periode || event?.nama || ''} sedang dibuka`}</h4>
                   <p className="text-xs text-slate-600 mt-0.5">
-                    Pendaftaran dibuka 1 Okt 2026 – 31 Okt 2026, 23.59 WIB. Yudisium dilaksanakan 20 Nov 2026.
+                    {`Pendaftaran dibuka ${formatDate(event?.tglBuka)} – ${formatDate(event?.tglTutup, true)}.${
+                      event?.tglYudisium ? ` Yudisium dilaksanakan ${formatDate(event.tglYudisium)}.` : ''
+                    }`}
                   </p>
                 </div>
               </div>
             )}
           </section>
 
-          {/* ========================================================= */}
-          {/* SECTION KETENTUAN, ALUR & HARDCOPY                        */}
-          {/* ========================================================= */}
+          {loadError && (
+            <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+              <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+              <span>{loadError}</span>
+            </div>
+          )}
+          {loading && (
+            <div className="flex items-center gap-2 rounded-2xl bg-white p-4 text-sm text-gray-500 shadow-sm">
+              <Loader2 size={16} className="animate-spin" />
+              Memuat formulir pengajuan...
+            </div>
+          )}
+          {/* SECTION KETENTUAN, ALUR & HARDCOPY */}
           <section className="rounded-2xl bg-white p-5 sm:p-8 shadow-sm space-y-6">
             <div className="flex items-start gap-4 border-b border-[#dce3ee] pb-5">
               <div className="flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl bg-[#fff2ca] text-[#8a6b00]">
@@ -802,129 +711,124 @@ export default function FormPengajuanPage() {
             </div>
           </section>
 
-          {/* ========================================================= */}
-          {/* SECTION IDENTITAS DIRI                                    */}
-          {/* ========================================================= */}
+          {/* SECTION IDENTITAS DIRI */}
           <section className="overflow-hidden rounded-2xl bg-white shadow-sm">
             <div className="border-b border-gray-200 bg-[#f7f8fc] px-5 sm:px-8 py-5 sm:py-6">
               <h2 className="text-xl sm:text-2xl font-bold text-[#172f55]">Identitas Diri</h2>
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 p-5 sm:p-8">
               <TextField
                 label="1. Nama Lengkap (Sesuai KTP/Ijazah/Akta)"
-                value={form.name}
+                value={profile.name}
                 disabled={isClosed}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                onChange={(e) => setProfileField('name', e.target.value)}
                 onBlur={() => markTouched('name')}
                 placeholder="Masukkan nama lengkap sesuai KTP/Ijazah/Akta"
                 error={fieldError.name}
               />
-
               <TextField
                 label="2. Nomor Induk Mahasiswa (NIM)"
-                value={form.nim}
+                value={profile.nim}
                 disabled={isClosed}
-                onChange={(e) => setForm({ ...form, nim: e.target.value })}
+                onChange={(e) => setProfileField('nim', e.target.value)}
                 onBlur={() => markTouched('nim')}
                 placeholder="Contoh: 21/478812/SV/18301"
                 error={fieldError.nim}
               />
-
               <SelectField
                 label="3. Program Studi"
-                value={form.prodi}
-                disabled={isClosed}
-                onChange={(e) => setForm({ ...form, prodi: e.target.value })}
+                value={profile.prodiId}
+                disabled={isClosed || changingProdi}
+                onChange={(e) => changeProdi(e.target.value)}
                 onBlur={() => markTouched('prodi')}
                 error={fieldError.prodi}
                 placeholder="Pilih Program Studi"
-                options={[
-                  'Teknologi Rekayasa Perangkat Lunak',
-                  'Teknologi Rekayasa Elektro',
-                  'Teknologi Rekayasa Instrumentasi dan Kontrol',
-                  'Teknologi Rekayasa Internet',
-                ]}
+                options={prodiOptions}
               />
 
-              <SelectField
-                label="4. Dosen Pembimbing Proyek Akhir"
-                value={form.dosen}
-                disabled={isClosed}
-                onChange={(e) => setForm({ ...form, dosen: e.target.value })}
-                onBlur={() => markTouched('dosen')}
-                error={fieldError.dosen}
-                placeholder="Pilih Dosen Pembimbing Proyek Akhir"
-                options={['Dr. Ir. Budi Santoso, M.T.', 'Dr. Siti Rahmawati, S.T., M.T.', 'Dr. Ahmad Fauzan, S.T., M.T.']}
-              />
+              {/* Field identitas tambahan mengikuti form aktif dari admin (dosen pembimbing, WhatsApp, link video, dst.).
+                  TODO: endpoint belum ada — daftar dosen pembimbing belum tersedia di API, sehingga
+                  "Dosen Pembimbing" tampil sebagai isian teks bila field-nya dibuat di form aktif. */}
+              {textFields.map((field, idx) => {
+                const key = `f_${field.id}`
+                const label = `${idx + 4}. ${field.name}${field.required ? '' : ' (Opsional)'}`
 
-              <div>
-                <label className="mb-2 block text-sm font-semibold">
-                  5. Nomor WhatsApp Aktif Mahasiswa
-                </label>
-                <div
-                  className={`flex overflow-hidden rounded-xl border ${
-                    isClosed ? 'border-slate-200 bg-[#f8fafc]' : fieldError.whatsapp ? 'border-red-400' : 'border-gray-300'
-                  }`}
-                >
-                  <span className={`flex items-center px-4 text-sm ${isClosed ? 'bg-slate-200/70 text-slate-500' : 'bg-[#dce6fb] text-[#1f3d6d]'}`}>
-                    +62
-                  </span>
-                  <input
-                    value={form.whatsapp}
+                if (isWhatsappField(field)) {
+                  return (
+                    <div key={field.id}>
+                      <label className="mb-2 block text-sm font-semibold">{label}</label>
+                      <div
+                        className={`flex overflow-hidden rounded-xl border ${
+                          isClosed ? 'border-slate-200 bg-[#f8fafc]' : fieldError[key] ? 'border-red-400' : 'border-gray-300'
+                        }`}
+                      >
+                        <span className={`flex items-center px-4 text-sm ${isClosed ? 'bg-slate-200/70 text-slate-500' : 'bg-[#dce6fb] text-[#1f3d6d]'}`}>
+                          +62
+                        </span>
+                        <input
+                          value={values[field.id] ?? ''}
+                          disabled={isClosed}
+                          onChange={(e) => setValue(field.id, e.target.value.replace(/\D/g, ''))}
+                          onBlur={() => markTouched(key)}
+                          placeholder="Contoh: 81234567890"
+                          className="h-12 flex-1 px-4 text-sm outline-none bg-transparent"
+                        />
+                      </div>
+                      {fieldError[key] && (
+                        <p className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-red-500">
+                          <AlertTriangle size={12} className="shrink-0" /> {fieldError[key]}
+                        </p>
+                      )}
+                    </div>
+                  )
+                }
+
+                return (
+                  <TextField
+                    key={field.id}
+                    label={label}
+                    value={values[field.id] ?? ''}
                     disabled={isClosed}
-                    onChange={(e) => setForm({ ...form, whatsapp: e.target.value.replace(/\D/g, '') })}
-                    onBlur={() => markTouched('whatsapp')}
-                    placeholder="Contoh: 81234567890"
-                    className="h-12 flex-1 px-4 text-sm outline-none bg-transparent"
+                    onChange={(e) => setValue(field.id, e.target.value)}
+                    onBlur={() => markTouched(key)}
+                    placeholder={field.description || `Masukkan ${field.name}`}
+                    error={fieldError[key]}
                   />
-                </div>
-                {fieldError.whatsapp && (
-                  <p className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-red-500">
-                    <AlertTriangle size={12} className="shrink-0" /> {fieldError.whatsapp}
-                  </p>
-                )}
-              </div>
-
-              <TextField
-                label="6. Tautan (Link) Video Presentasi Tugas Akhir"
-                value={form.video}
-                disabled={isClosed}
-                onChange={(e) => setForm({ ...form, video: e.target.value })}
-                onBlur={() => markTouched('video')}
-                placeholder="Tautan video diseminasi tugas akhir, minimal 3 menit"
-                error={fieldError.video}
-              />
+                )
+              })}
             </div>
           </section>
-
-          {/* ========================================================= */}
-          {/* SECTION DOKUMEN PERSYARATAN                               */}
-          {/* ========================================================= */}
+          {/* SECTION DOKUMEN PERSYARATAN */}
           <section className="overflow-hidden rounded-2xl bg-white shadow-sm">
             <div className="border-b border-gray-200 bg-[#f7f8fc] px-5 sm:px-8 py-5 sm:py-6">
               <h2 className="text-xl sm:text-2xl font-bold text-[#172f55]">Dokumen Persyaratan</h2>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 sm:p-6">
+              {loading && (
+                <p className="col-span-full flex items-center gap-2 text-sm text-gray-500">
+                  <Loader2 size={16} className="animate-spin" /> Memuat dokumen persyaratan...
+                </p>
+              )}
+              {!loading && documents.length === 0 && (
+                <p className="col-span-full text-sm text-gray-500">
+                  Belum ada dokumen persyaratan pada form yang aktif.
+                </p>
+              )}
               {documents.map((document) => (
                 <DocumentCard
                   key={document.id}
                   document={document}
                   file={files[document.id]}
-                  error={errors[document.id]}
+                  error={fileErrors[document.id]}
                   isClosed={isClosed}
-                  disabled={document.notApplicable && !isAlihProgram}
-                  onFileChange={handleFileChange}
-                  onErrorChange={handleErrorChange}
+                  onFileChange={setFile}
+                  onErrorChange={setFileError}
                 />
               ))}
             </div>
           </section>
-
-          {/* ========================================================= */}
-          {/* SECTION PAKTA INTEGRITAS                                  */}
-          {/* ========================================================= */}
+          {/* SECTION PAKTA INTEGRITAS */}
           <section className="rounded-2xl bg-white p-5 sm:p-7 shadow-sm">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#fff2ca] text-[#8a6b00]">
@@ -967,9 +871,13 @@ export default function FormPengajuanPage() {
             </label>
           </section>
 
-          {/* ========================================================= */}
-          {/* SECTION FOOTER SUBMIT                                     */}
-          {/* ========================================================= */}
+          {submitError && (
+            <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+              <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+              <span>{submitError}</span>
+            </div>
+          )}
+          {/* SECTION FOOTER SUBMIT */}
           <section className="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-white px-5 sm:px-7 py-5">
             {isClosed ? (
               <>
@@ -1018,26 +926,19 @@ export default function FormPengajuanPage() {
                 <button
                   type="button"
                   disabled={!canSubmit}
-                  onClick={() => {
-                    setSubmitAttempted(true)
-                    if (canSubmit) {
-                      alert('Pengajuan yudisium berhasil dikirim.')
-                      navigate('/pelacakan-yudisium')
-                    }
-                  }}
+                  onClick={submit}
                   className={`flex h-12 w-full sm:w-auto min-w-[260px] items-center justify-center gap-2.5 rounded-xl px-7 text-sm font-semibold transition ${
                     canSubmit
                       ? 'bg-[#142f57] text-white hover:bg-[#102647] cursor-pointer shadow-sm'
                       : 'bg-[#8592a3] text-white cursor-not-allowed'
                   }`}
                 >
-                  <span>Ajukan Berkas Yudisium</span>
+                  <span>{submitting ? 'Mengirim pengajuan...' : 'Ajukan Berkas Yudisium'}</span>
                   <Send size={17} className="rotate-45 shrink-0" />
                 </button>
               </>
             )}
           </section>
-
         </div>
       </main>
     </div>

@@ -1,9 +1,20 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { loginWithGoogle } from '../../services/auth'
 
-function LoginPage() {
+export default function LoginPage() {
+  const [searchParams] = useSearchParams()
   const [status, setStatus] = useState('default')
   const [error, setError] = useState('')
+
+  // Menangkap pesan error dari URL saat backend redirect (misal: email non-UGM)
+  useEffect(() => {
+    const errorParam = searchParams.get('error')
+    if (errorParam) {
+      setError(errorParam)
+      setStatus('denied')
+    }
+  }, [searchParams])
 
   const handleGoogleLogin = async () => {
     try {
@@ -11,16 +22,18 @@ function LoginPage() {
       setError('')
 
       await loginWithGoogle()
-    } catch (error) {
-      console.error('Google login error:', error)
+    } catch (err) {
+      console.error('Google login error:', err)
       setStatus('denied')
-      setError('')
+      setError(err?.message || '')
     }
   }
 
   const handleTryAgain = () => {
     setStatus('default')
     setError('')
+    // Bersihkan parameter ?error= dari URL agar bersih kembali
+    window.history.replaceState({}, document.title, window.location.pathname)
   }
 
   return (
@@ -200,21 +213,15 @@ function LoginPage() {
                             Autentikasi Gagal / Akses Ditolak
                           </p>
 
-                          {error && (
+                          {error ? (
                             <p className="mt-3 text-[12px] leading-7 text-[#B42318]">
                               {error}
                             </p>
+                          ) : (
+                            <p className="mt-3 text-[12px] leading-7 text-[#B42318]">
+                              Akun Google yang Anda pilih bukan merupakan akun resmi Google Workspace UGM.
+                            </p>
                           )}
-
-                          <p className="mt-3 text-[12px] leading-7 text-[#B42318]">
-                            Akun Google yang Anda pilih{' '}
-                            <span className="underline underline-offset-2">
-                              (user@gmail.com)
-                            </span>{' '}
-                            bukan merupakan
-                            <br />
-                            akun resmi Google Workspace UGM.
-                          </p>
 
                           {/* DIVIDER */}
                           <div className="my-3 h-px bg-[#F5C6C6]" />
@@ -225,7 +232,7 @@ function LoginPage() {
 
                           <p className="mt-1 text-[12px] leading-5 font-semibold text-[#6B1111]">
                             Menggunakan akun Google dengan domain{' '}
-                            @mail.ugm.ac.id
+                            @ugm.ac.id / @mail.ugm.ac.id
                           </p>
                         </div>
                       </div>
@@ -275,7 +282,7 @@ function LoginPage() {
       <footer className="h-12 shrink-0 border-t border-[#DCE3EA] bg-white">
         <div className="flex h-full w-full max-w-[1200px] mx-auto items-center px-8">
           <p className="text-[12px] text-[#65758B]">
-            © 2024 Departemen Teknik Elektro dan Informatika,
+            © 2026 Departemen Teknik Elektro dan Informatika,
             Sekolah Vokasi UGM
           </p>
         </div>
@@ -285,7 +292,6 @@ function LoginPage() {
 }
 
 /* ================= GOOGLE ICON ================= */
-
 function GoogleIcon() {
   return (
     <svg
@@ -316,5 +322,3 @@ function GoogleIcon() {
     </svg>
   )
 }
-
-export default LoginPage
