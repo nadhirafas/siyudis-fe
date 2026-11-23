@@ -308,10 +308,11 @@ export default function ApproverDashboardPage() {
         const baRes = await getBeritaAcaraList(currentRole, { limit: 50 })
         const rawItems = baRes?.data?.data || baRes?.data || []
 
-        // Enforce aturan sequential: Manit hanya menampilkan yang sudah di-approve Kadep
+        // Enforce aturan sequential (Kaprodi -> Manit -> Kadep):
+        // Kadep hanya menampilkan yang sudah di-approve Manit
         const filteredItems =
-          currentRole === 'manit'
-            ? rawItems.filter((item) => item.approved_kadep_at !== null)
+          currentRole === 'kadep'
+            ? rawItems.filter((item) => item.approved_manit_at !== null)
             : rawItems
 
         if (active) {
@@ -340,7 +341,7 @@ export default function ApproverDashboardPage() {
         email: storedUser?.email || 'kadep_tedi@mail.ugm.ac.id',
         sub: 'Pusat persetujuan yudisium mahasiswa DTEDI SV UGM.',
         emptyMsg:
-          'Belum ada draf Berita Acara Yudisium yang disetujui oleh Kaprodi pada periode ini. Dokumen kolektif akan tampil di sini begitu siap untuk Anda tinjau.',
+          'Belum ada draf Berita Acara Yudisium yang disetujui oleh Manit pada periode ini. Dokumen kolektif akan tampil di sini begitu siap untuk Anda sahkan.',
       }
     }
     if (currentRole === 'manit') {
@@ -352,7 +353,7 @@ export default function ApproverDashboardPage() {
         email: storedUser?.email || 'manit_tedi@mail.ugm.ac.id',
         sub: 'Pusat persetujuan yudisium mahasiswa DTEDI SV UGM.',
         emptyMsg:
-          'Belum ada draf Berita Acara Yudisium yang disetujui oleh Kadep pada periode ini. Dokumen kolektif akan tampil di sini begitu siap untuk Anda tinjau.',
+          'Belum ada draf Berita Acara Yudisium yang disetujui oleh Kaprodi pada periode ini. Dokumen kolektif akan tampil di sini begitu siap untuk Anda tinjau.',
       }
     }
     return {

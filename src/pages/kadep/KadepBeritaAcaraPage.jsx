@@ -237,7 +237,7 @@ function Header({ onOpenSidebar, userDisplayName, userEmail, userPhoto }) {
         </button>
         <div>
           <h1 className="text-xl lg:text-[28px] font-bold leading-tight text-gray-950">
-            Berita Acara Kepala Departemen
+            Pengesahan Akhir Berita Acara Yudisium
           </h1>
           <p className="hidden sm:block mt-0.5 text-xs lg:text-sm text-gray-500">
             Sistem Informasi Yudisium Terpadu DTEDI SV UGM
@@ -348,7 +348,6 @@ function createEmptyProdiMap() {
     map[code] = {
       ...DEFAULT_PRODI_META[code],
       status: 'unsubmitted',
-      kaprodiApprovedDate: null,
       activeDraftMeta: null,
       history: [],
     }
@@ -475,14 +474,17 @@ export default function KadepBeritaAcaraPage() {
       PRODI_ORDER.forEach((code) => {
         const prodiItems = allItems.filter((item) => resolveProdiCode(item) === code)
 
-        // Pending = status approved_kaprodi dan Kadep belum approve
+        // Pending di Kadep = status approved_kaprodi dan Manit sudah approve (approved_manit_at != null), Kadep belum approve
         const pendingItem = prodiItems.find(
-          (item) => item.status === 'approved_kaprodi' && item.approved_kadep_at === null
+          (item) =>
+            item.status === 'approved_kaprodi' &&
+            item.approved_manit_at !== null &&
+            item.approved_kadep_at === null
         )
 
-        // History = sudah pernah disetujui Kadep (approved_kadep_at != null atau completed)
+        // History di Kadep = status completed (atau approved_kadep_at != null)
         const approvedHistory = prodiItems
-          .filter((item) => item.approved_kadep_at !== null || item.status === 'completed')
+          .filter((item) => item.status === 'completed' || item.approved_kadep_at !== null)
           .sort(
             (a, b) =>
               new Date(b.approved_kadep_at || b.updated_at || 0) -
@@ -505,11 +507,9 @@ export default function KadepBeritaAcaraPage() {
 
         if (pendingItem) {
           nextMap[code].status = 'pending'
-          nextMap[code].kaprodiApprovedDate = formatDateIndo(pendingItem.approved_kaprodi_at)
           nextMap[code].activeDraftMeta = pendingItem
         } else if (approvedHistory.length > 0) {
           nextMap[code].status = 'approved'
-          nextMap[code].kaprodiApprovedDate = null
           nextMap[code].activeDraftMeta = null
         } else {
           nextMap[code].status = 'unsubmitted'
@@ -584,6 +584,7 @@ export default function KadepBeritaAcaraPage() {
     }
   }
 
+  // Handler Setujui & Tanda Tangani Final Kadep
   const handleConfirmApprove = async () => {
     if (!activeDraftDetail) return
 
@@ -593,7 +594,7 @@ export default function KadepBeritaAcaraPage() {
       await approveBeritaAcara('kadep', activeDraftDetail.id)
       setApproveModalOpen(false)
       triggerToast(
-        `Berita Acara Prodi ${selectedProdiCode} berhasil ditandatangani dan diteruskan kepada Manit!`
+        `Berita Acara Prodi ${selectedProdiCode} resmi diterbitkan dan diarsipkan ke Histori Berita Acara!`
       )
       await fetchAllProdiStatus()
     } catch (err) {
@@ -636,9 +637,7 @@ export default function KadepBeritaAcaraPage() {
       URL.revokeObjectURL(url)
       triggerToast(`Mengunduh ${filename}`)
     } catch (err) {
-      setErrorBanner(
-        err.message || 'PDF resmi baru dapat diunduh setelah disetujui oleh Kepala Departemen dan Manit.'
-      )
+      setErrorBanner(err.message || 'Gagal mengunduh file PDF Berita Acara.')
     } finally {
       setDownloadingPdf(false)
     }
@@ -684,13 +683,13 @@ export default function KadepBeritaAcaraPage() {
             </div>
           )}
 
-          {/* HEADER CARD PERSETUJUAN BERITA ACARA */}
+          {/* HEADER CARD PERSETUJUAN YUDISIUM */}
           <div className="rounded-2xl bg-white p-6 sm:p-7 shadow-2xs border border-slate-100">
             <h2 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">
-              Persetujuan Berita Acara Yudisium
+              Persetujuan Yudisium
             </h2>
             <p className="mt-1.5 text-xs sm:text-sm text-slate-500 font-normal">
-              Pilih program studi untuk memeriksa daftar mahasiswa lulusan dan dokumen Berita Acara yang telah disetujui Kaprodi sebelum diteruskan ke Manit.
+              Pilih program studi untuk memeriksa daftar mahasiswa lulusan dan dokumen Berita Acara yang telah disetujui Kaprodi serta Manit sebelum disahkan secara final.
             </p>
           </div>
 
@@ -770,7 +769,7 @@ export default function KadepBeritaAcaraPage() {
 
                       {item.status === 'unsubmitted' && (
                         <div className="flex items-center justify-between text-xs font-medium text-slate-400">
-                          <span>Belum Diajukan Kaprodi</span>
+                          <span>Belum Diteruskan Manit</span>
                           <Clock size={14} className="shrink-0" />
                         </div>
                       )}
@@ -792,7 +791,11 @@ export default function KadepBeritaAcaraPage() {
                     Menunggu Persetujuan Anda &bull; Program Studi {currentProdi.code}
                   </h4>
                   <p className="mt-0.5 text-xs text-[#944E23] leading-relaxed">
-                    Dokumen ini telah disetujui oleh Kaprodi {currentProdi.code} pada {currentProdi.kaprodiApprovedDate}. Setelah Anda setujui, dokumen ini akan langsung berpindah ke{' '}
+                    Dokumen ini telah ditandatangani oleh{' '}
+                    <span className="font-bold text-[#7C3F19]">Kaprodi</span>{' '}
+                    dan{' '}
+                    <span className="font-bold text-[#7C3F19]">Manit.</span>{' '}
+                    Persetujuan Anda akan menerbitkan Berita Acara ini secara resmi dan memindahkannya ke{' '}
                     <span className="font-bold text-[#7C3F19]">Histori Berita Acara.</span>
                   </p>
                 </div>
@@ -900,7 +903,7 @@ export default function KadepBeritaAcaraPage() {
                     </div>
                   )}
 
-                  {/* KONDISI B: BELUM DIAJUKAN KAPRODI */}
+                  {/* KONDISI B: BELUM DITERUSKAN MANIT */}
                   {currentProdi.status === 'unsubmitted' && (
                     <div className="rounded-2xl bg-white p-10 sm:p-14 shadow-2xs border border-slate-100 flex flex-col items-center justify-center text-center">
                       <EmptyStateDoubleLayerIcon />
@@ -909,12 +912,12 @@ export default function KadepBeritaAcaraPage() {
                         Belum Ada Berita Acara dari Prodi {currentProdi.code}
                       </h4>
                       <p className="mt-1.5 max-w-md text-xs sm:text-sm text-slate-500 leading-relaxed font-normal">
-                        Kaprodi {currentProdi.code} belum meneruskan draf Berita Acara Yudisium pada periode ini. Dokumen akan tampil di sini setelah disetujui oleh Kaprodi terkait.
+                        Manit belum meneruskan draf Berita Acara Yudisium Prodi {currentProdi.code} pada periode ini. Dokumen akan tampil di sini setelah disetujui oleh Kaprodi dan Manit terkait.
                       </p>
                     </div>
                   )}
 
-                  {/* KONDISI C: MENUNGGU PERSETUJUAN KADEP */}
+                  {/* KONDISI C: MENUNGGU PENGESAHAN AKHIR KADEP */}
                   {currentProdi.status === 'pending' && activeDraftDetail && (
                     <div className="space-y-6">
                       {/* 1. CARD DAFTAR MAHASISWA YUDISIUM */}
@@ -924,7 +927,7 @@ export default function KadepBeritaAcaraPage() {
                             Daftar Mahasiswa Yudisium {currentProdi.code} &bull; {activeDraftDetail.periode}
                           </h3>
                           <p className="mt-1 text-xs text-slate-500 font-normal">
-                            Mahasiswa pada daftar ini telah diverifikasi oleh Kaprodi {currentProdi.code} dan menunggu pengesahan Anda.
+                            Mahasiswa pada daftar ini telah disetujui oleh Kaprodi {currentProdi.code} dan Manit, serta menunggu pengesahan akhir Anda.
                           </p>
                         </div>
 
@@ -1005,10 +1008,10 @@ export default function KadepBeritaAcaraPage() {
                             </div>
                             <div>
                               <h3 className="text-base font-bold text-gray-900">
-                                Dokumen Draft Berita Acara Yudisium &bull; Prodi {currentProdi.code}
+                                Dokumen Berita Acara Yudisium &bull; Prodi {currentProdi.code}
                               </h3>
                               <p className="text-xs text-slate-500 font-normal">
-                                Pratinjau penuh surat Berita Acara beserta lampiran daftar kelulusan mahasiswa
+                                Telah ditandatangani oleh Kaprodi {currentProdi.code} dan Manit &bull; Pratinjau penuh dokumen sebelum pengesahan akhir
                               </p>
                             </div>
                           </div>
@@ -1043,7 +1046,7 @@ export default function KadepBeritaAcaraPage() {
                         <div className="flex items-start gap-3 max-w-md">
                           <ShieldCheck size={20} strokeWidth={2.2} className="shrink-0 text-[#142F57] mt-0.5" />
                           <p className="text-xs text-slate-500 leading-relaxed font-normal">
-                            Pastikan isi surat draf Berita Acara di atas telah sesuai sebelum memberikan tanda tangan persetujuan atau mengembalikan ke Staf Administrasi.
+                            Pastikan isi surat Berita Acara di atas telah sesuai sebelum memberikan tanda tangan pengesahan akhir atau mengembalikan ke Staf Administrasi.
                           </p>
                         </div>
 
@@ -1133,10 +1136,7 @@ export default function KadepBeritaAcaraPage() {
                                 <td className="py-4 px-3">
                                   <p className="font-bold text-gray-900">{item.periode}</p>
                                   <p className="text-[11px] text-slate-600 mt-0.5">
-                                    Disetujui: {item.approvedDate} &bull;{' '}
-                                    <span className="font-semibold text-[#142F57]">
-                                      {item.status === 'completed' ? 'Final (Selesai)' : 'Menunggu Pengesahan Manit'}
-                                    </span>
+                                    Disetujui &amp; Terbit: {item.approvedDate}
                                   </p>
                                 </td>
                                 <td className="py-4 px-3 text-slate-700 font-normal">{item.docNumber}</td>
@@ -1277,9 +1277,9 @@ export default function KadepBeritaAcaraPage() {
                 Setujui &amp; Tanda Tangani Berita Acara?
               </h3>
               <p className="mt-2 text-xs sm:text-[13px] text-slate-500 leading-relaxed">
-                Apakah Anda yakin seluruh data pada draf Berita Acara Prodi {currentProdi.code} telah sesuai?{' '}
-                <span className="font-bold text-slate-600">Tanda Tangan Elektronik</span> Anda akan dibubuhkan dan dokumen akan diteruskan kepada{' '}
-                <span className="font-bold text-slate-600">Manit</span>.
+                Dengan menyetujui dokumen ini,{' '}
+                <span className="font-bold text-slate-600">Tanda Tangan Elektronik Kepala Departemen</span> akan dibubuhkan sebagai pengesahan terakhir. Dokumen Berita Acara akan langsung diterbitkan dan diarsipkan ke dalam{' '}
+                <span className="font-bold text-slate-600">Histori Berita Acara</span>.
               </p>
             </div>
 
@@ -1333,27 +1333,25 @@ export default function KadepBeritaAcaraPage() {
                   Dokumen Berita Acara Yudisium &bull; Prodi {currentProdi.code} ({previewHistoryDoc.periode})
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Pratinjau penuh surat Berita Acara yang telah disahkan
+                  Pratinjau penuh surat Berita Acara yang telah diterbitkan
                 </p>
               </div>
 
               <div className="flex items-center gap-3">
-                {previewHistoryDoc.status === 'completed' && (
-                  <button
-                    type="button"
-                    disabled={downloadingPdf}
-                    onClick={() =>
-                      handleExportOfficialPdf(
-                        previewHistoryDoc.id,
-                        `Berita_Acara_${currentProdi.code}_${previewHistoryDoc.periode.replace(/\s+/g, '_')}.pdf`
-                      )
-                    }
-                    className="inline-flex items-center gap-2 rounded-xl bg-[#142F57] px-4 py-2 text-xs font-semibold text-white hover:bg-[#0B1E38] transition shadow-2xs disabled:opacity-60"
-                  >
-                    {downloadingPdf ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                    {downloadingPdf ? 'Mengunduh...' : 'Unduh Berita Acara (PDF)'}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  disabled={downloadingPdf}
+                  onClick={() =>
+                    handleExportOfficialPdf(
+                      previewHistoryDoc.id,
+                      `Berita_Acara_${currentProdi.code}_${previewHistoryDoc.periode.replace(/\s+/g, '_')}.pdf`
+                    )
+                  }
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#142F57] px-4 py-2 text-xs font-semibold text-white hover:bg-[#0B1E38] transition shadow-2xs disabled:opacity-60"
+                >
+                  {downloadingPdf ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                  {downloadingPdf ? 'Mengunduh...' : 'Unduh Berita Acara (PDF)'}
+                </button>
 
                 <button
                   type="button"
