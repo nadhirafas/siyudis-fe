@@ -135,7 +135,8 @@ export function normalizeMyPengajuan(data) {
     }
   })
 
-  const ba = d.berita_acara ?? d.beritaAcara ?? null
+  const baRaw = d.berita_acara ?? d.beritaAcara ?? null
+  const ba = Array.isArray(baRaw) ? baRaw[baRaw.length - 1] ?? null : baRaw
   return {
     raw: d,
     id: d.pengajuan_id ?? d.id ?? null,
@@ -144,7 +145,7 @@ export function normalizeMyPengajuan(data) {
     event: normalizeEvent(d.yudisium_event ?? d.event),
     submittedAt: d.submitted_at ?? d.created_at ?? null,
     updatedAt: d.updated_at ?? null,
-    catatan: d.catatan_revisi ?? d.catatan_revisi_mahasiswa ?? d.catatan ?? d.revision_note ?? '',
+    catatan: d.catatan_koreksi_mahasiswa ?? d.catatan_revisi ?? d.catatan_revisi_mahasiswa ?? d.catatan ?? d.revision_note ?? '',
     fieldValues,
     beritaAcaraId: d.berita_acara_id ?? ba?.id ?? null,
     beritaAcaraStatus: ba?.status ?? d.berita_acara_status ?? null,

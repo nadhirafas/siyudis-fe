@@ -13,7 +13,7 @@ import {
 
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
-import { getUser } from '../services/auth'
+import { getUser, getUserRoles } from '../services/auth'
 import ugmLogo from '../assets/ugm-logo.png'
 
 export default function Sidebar({ admin = false, isOpen, onClose, hideFloatingButton = false }) {
@@ -26,21 +26,18 @@ export default function Sidebar({ admin = false, isOpen, onClose, hideFloatingBu
   const openSidebar = () => (controlled ? onClose?.(true) : setInternalOpen(true))
   const closeSidebar = () => (controlled ? onClose?.(false) : setInternalOpen(false))
 
-  // Ambil data user & role langsung dari service auth yang terintegrasi dengan BE
   const currentUser = getUser()
-  const rawRole =
-    currentUser?.role?.name ||
-    currentUser?.role ||
-    (Array.isArray(currentUser?.roles)
-      ? currentUser.roles[0]?.name || currentUser.roles[0]
-      : '')
-  const userRole = String(rawRole || '').toLowerCase()
+  const userRoles = getUserRoles(currentUser)
+  const hasStafRole = userRoles.includes('staf_akademik') || userRoles.includes('super_admin')
 
-  const isSuperRole = ['super_admin', 'superadmin', 'super-admin'].includes(userRole)
-  const isAdminRole = ['admin', 'staf', 'staff'].includes(userRole)
+  const isInSuperPath = location.pathname.startsWith('/super-admin')
+  const isInAdminPath = location.pathname.startsWith('/admin')
 
-  const inSuperArea = location.pathname.startsWith('/super-admin') || isSuperRole
-  const area = inSuperArea ? 'super' : admin || isAdminRole ? 'staf' : 'mahasiswa'
+  const area = isInSuperPath
+    ? 'super'
+    : isInAdminPath || admin || hasStafRole
+    ? 'staf'
+    : 'mahasiswa'
 
   const buildMenus = (base) => [
     { label: 'Dashboard', icon: Home, path: `${base}/dashboard` },

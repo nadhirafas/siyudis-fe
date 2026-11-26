@@ -35,14 +35,20 @@ function AppRoutes() {
       <Route path="/" element={<LoginPage />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
 
+      {/* Shared Authenticated Route (bisa diakses semua role yang sudah login) */}
+      <Route element={<ProtectedRoute />}>
+        <Route path="/profile" element={<ProfilePage />} />
+      </Route>
+
       {/* Mahasiswa Routes */}
-      <Route path="/dashboard" element={<StudentDashboard />} />
-      <Route path="/profile" element={<ProfilePage />} />
-      <Route path="/pengajuan-yudisium" element={<FormPengajuanPage />} />
-      <Route path="/panduan" element={<PanduanDokumenPage />} />
-      <Route path="/pelacakan-yudisium" element={<TrackingPengajuanPage />} />
-      <Route path="/pengajuan-yudisium/edit" element={<FormEditPengajuanPage />} />
-      <Route path="/berita-acara" element={<BeritaAcaraPage />} />
+      <Route element={<ProtectedRoute allowedRole="mahasiswa" />}>
+        <Route path="/dashboard" element={<StudentDashboard />} />
+        <Route path="/pengajuan-yudisium" element={<FormPengajuanPage />} />
+        <Route path="/panduan" element={<PanduanDokumenPage />} />
+        <Route path="/pelacakan-yudisium" element={<TrackingPengajuanPage />} />
+        <Route path="/pengajuan-yudisium/edit" element={<FormEditPengajuanPage />} />
+        <Route path="/berita-acara" element={<BeritaAcaraPage />} />
+      </Route>
 
       {/* Kaprodi Routes */}
       <Route path="/kaprodi/dashboard" element={<ApproverDashboardPage />} />

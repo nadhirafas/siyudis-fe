@@ -65,6 +65,15 @@ export const checklistAkhir = (id) =>
   apiRequest(`/staf-akademik/pengajuan/${id}/checklist`, { method: 'POST' })
 
 /* =========================================================
+   SUPER ADMIN — Riwayat Perubahan  (GET /admin/riwayat)
+   Filter BE: role_name, modul, jenis, tanggal_dari, tanggal_sampai, q, limit
+========================================================= */
+export const listRiwayat = async (params = {}) =>
+  unwrapList(await apiRequest('/admin/riwayat', { params: { limit: 500, ...params } }))
+export const getRiwayatRingkasan = async (params = {}) =>
+  unwrap(await apiRequest('/admin/riwayat/ringkasan', { params }))
+
+/* =========================================================
    ADMIN (Staf Akademik) — Berita Acara  (folder 5 & 10)
 ========================================================= */
 export const ajukanBeritaAcara = async (body) =>

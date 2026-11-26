@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  ArrowLeft,
   UserRound,
   FileText,
   FileSearch,
@@ -24,10 +23,8 @@ import {
   AlertCircle,
   Lock,
   Check,
-  Send,
   Loader2,
   RotateCw,
-  Info,
   Save,
 } from 'lucide-react'
 
@@ -67,7 +64,15 @@ const PENILAIAN_FIELDS = [
   { key: 'similarity_index', label: 'Similarity Index (%)', type: 'number', step: '0.01', placeholder: '18.5' },
   { key: 'skor_bahasa_inggris', label: 'Skor Bahasa Inggris', type: 'number', step: '1', placeholder: '500' },
   { key: 'sertifikat_level', label: 'Level Sertifikat', type: 'text', placeholder: 'Internasional' },
-  { key: 'status_judul_pa', label: 'Status Judul PA', type: 'text', placeholder: 'disetujui' },
+  {
+    key: 'status_judul_pa',
+    label: 'Status Judul PA',
+    type: 'select',
+    options: [
+      ['disetujui', 'Disetujui'],
+      ['tidak_disetujui', 'Tidak disetujui'],
+    ],
+  },
   { key: 'sertifikat_kompetensi', label: 'Sertifikat Kompetensi', type: 'text', placeholder: 'BNSP Junior Web Developer' },
   { key: 'status_bebas_pelanggaran', label: 'Bebas Pelanggaran Etik', type: 'boolean' },
 ]
@@ -85,7 +90,17 @@ const EMPTY_PENILAIAN = {
 }
 
 const PENILAIAN_EDITABLE = ['submitted', 'checking_akademik', 'student_revision_requested']
-const CAN_SEND_CONFIRMATION = ['submitted', 'checking_akademik', 'student_revision_requested']
+// Status 'waiting_student_confirmation' ikut diizinkan untuk mengirim ulang konfirmasi
+const CAN_SEND_CONFIRMATION = [
+  'submitted',
+  'checking_akademik',
+  'student_revision_requested',
+  'waiting_student_confirmation',
+]
+
+// Identitas & dokumen mahasiswa hanya dibaca staf: BE belum punya endpoint untuk mengubahnya
+// (hanya data penilaian yang bisa disimpan lewat PUT /staf-akademik/pengajuan/{id}/penilaian).
+const IDENTITY_EDITABLE = false
 
 function penilaianFromRaw(raw = {}) {
   const src = raw.penilaian ?? raw.data_penilaian ?? raw.penilaian_yudisium ?? raw
@@ -178,13 +193,17 @@ function normalizeItem(it, idx) {
   if (it === null || typeof it !== 'object') return { key: idx, label: `Isian ${idx + 1}`, value: it, file: '' }
   const field = it.field || it.form_field || {}
   const upload = it.upload || it.file || {}
-  const file =
+  const fileRaw =
     it.file_url ?? it.url ?? it.path ?? it.file_path ?? upload.url ?? upload.path ?? upload.file_path ?? ''
   const type = field.data_type ?? it.data_type ?? ''
+  const valueRaw = it.value ?? it.nilai ?? it.jawaban ?? it.answer ?? it.text ?? null
+  const file =
+    fileRaw ||
+    (['pdf', 'image', 'file'].includes(String(type).toLowerCase()) && typeof valueRaw === 'string' ? valueRaw : '')
   return {
     key: it.id ?? idx,
     label: field.field_name ?? it.field_name ?? it.label ?? it.nama ?? it.title ?? `Isian ${idx + 1}`,
-    value: it.value ?? it.nilai ?? it.jawaban ?? it.answer ?? it.text ?? null,
+    value: valueRaw,
     file: typeof file === 'string' ? file : '',
     fileName: it.original_name ?? it.file_name ?? upload.original_name ?? upload.file_name ?? '',
     fileSize: it.file_size ?? upload.file_size ?? '',
@@ -300,7 +319,7 @@ function ProfileDropdown({ user, displayName, navigate, handleLogout, setProfile
 }
 
 /* =========================================================
-   STATUS BADGE (SESUAI PART 1 & PART 2)
+   STATUS BADGE
 ========================================================= */
 function StatusBadge({ status }) {
   const meta = statusMeta(status)
@@ -356,7 +375,7 @@ function StatusBadge({ status }) {
 }
 
 /* =========================================================
-   EMPTY STATE (SESUAI STATE 1: KOSONG PENUH)
+   EMPTY STATE
 ========================================================= */
 function EmptyTableState({ title, description, onReload, reloading }) {
   return (
@@ -400,7 +419,7 @@ function FilterSelect({ value, onChange, children, width = 'w-full sm:w-[140px]'
 }
 
 /* =========================================================
-   DOCUMENT CARD (MODE LIHAT/PERIKSA vs MODE EDIT)
+   DOCUMENT CARD
 ========================================================= */
 function DocumentCard({ document, index, editMode, replacementFile, onSelectFile }) {
   const fileInputRef = useRef(null)
@@ -520,83 +539,10 @@ function DocumentCard({ document, index, editMode, replacementFile, onSelectFile
 }
 
 /* =========================================================
-   MODAL FORMULIR CATATAN KESALAHAN PENGAJUAN YUDISIUM
-   (Sesuai Part 2: PeriksaPopout-1.jpg)
-========================================================= */
-function RevisionNoteModal({ open, onClose, onSubmit, busy }) {
-  const [note, setNote] = useState('')
-
-  if (!open) return null
-
-  return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-[#0F172A]/50 p-4">
-      <div className="w-full max-w-[680px] rounded-2xl border border-[#E2E8F0] bg-white p-6 shadow-2xl">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <h3 className="text-[16px] font-bold text-[#0F172A]">Formulir Catatan Kesalahan Pengajuan Yudisium</h3>
-            <p className="mt-0.5 text-[9.5px] font-bold uppercase tracking-wider text-[#DC2626]">
-              SANGGAHAN KETIDAKSESUAIAN PENGAJUAN YUDISIUM
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-[#64748B] hover:bg-[#F1F5F9]"
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="mt-4">
-          <div className="flex items-center justify-between">
-            <label className="text-[10.5px] font-bold text-[#1E293B]">
-              Rincian Kesalahan Data &amp; Catatan Revisi Staff Administrasi <span className="text-[#DC2626]">*</span>
-            </label>
-            <span className="text-[10px] text-[#64748B]">{note.length} karakter</span>
-          </div>
-
-          <div className="mt-2 flex items-center gap-2 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2 text-[10px] text-[#475569]">
-            <Info size={13} className="shrink-0 text-[#0A477F]" />
-            <span>Tuliskan secara lengkap dan jelas bagian data mana yang keliru pada pengajuan yudisium beserta rincian pembetulan yang benar.</span>
-          </div>
-
-          <textarea
-            rows={5}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder={'Contoh format catatan:\n1. Dokumen pelengkap Sertifikat Bahasa Inggris masih kurang.'}
-            className="mt-2.5 w-full rounded-xl border border-[#CBD5E1] bg-white p-3.5 text-[11px] text-[#1E293B] outline-none placeholder:text-[#94A3B8] focus:border-[#0A477F]"
-          />
-        </div>
-
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-[36px] rounded-xl border border-[#CBD5E1] bg-white px-4 text-[11px] font-bold text-[#475569] hover:bg-[#F1F5F9]"
-          >
-            Batal
-          </button>
-          <button
-            type="button"
-            disabled={busy || !note.trim()}
-            onClick={() => onSubmit(note.trim())}
-            className="inline-flex h-[36px] items-center gap-2 rounded-xl bg-[#D93025] px-5 text-[11px] font-bold text-white shadow-xs transition hover:bg-[#B91C1C] disabled:opacity-50"
-          >
-            {busy ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-            Kirim Catatan Revisi ke Staf Akademik
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/* =========================================================
    POPOUT DETAIL MAHASISWA (MODE: 'periksa' | 'edit' | 'lihat')
 ========================================================= */
 function StudentDetailView({ studentId, initialMode = 'periksa', onClose, onChanged }) {
-  const [mode, setMode] = useState(initialMode) // 'periksa' | 'edit' | 'lihat'
+  const [mode, setMode] = useState(initialMode)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState(null)
@@ -613,7 +559,6 @@ function StudentDetailView({ studentId, initialMode = 'periksa', onClose, onChan
     videoLink: '',
   })
   const [replacedFiles, setReplacedFiles] = useState({})
-  const [revisionModalOpen, setRevisionModalOpen] = useState(false)
   const [showRaw, setShowRaw] = useState(false)
 
   const applyDetail = useCallback((data) => {
@@ -680,14 +625,16 @@ function StudentDetailView({ studentId, initialMode = 'periksa', onClose, onChan
     run(
       'save',
       () => savePenilaian(studentId, penilaianPayload(form)),
-      'Perubahan data pengajuan dan penilaian berhasil disimpan.'
+      'Perubahan data penilaian berhasil disimpan.'
     )
 
   const handleVerifyAndSend = () =>
     run(
       'verify',
       async () => {
-        await savePenilaian(studentId, penilaianPayload(form))
+        if (PENILAIAN_EDITABLE.includes(status)) {
+          await savePenilaian(studentId, penilaianPayload(form))
+        }
         if (status === 'confirmed_by_student') {
           await checklistAkhir(studentId)
         } else if (CAN_SEND_CONFIRMATION.includes(status)) {
@@ -697,19 +644,6 @@ function StudentDetailView({ studentId, initialMode = 'periksa', onClose, onChan
       status === 'confirmed_by_student'
         ? 'Checklist akhir selesai. Mahasiswa berhasil diverifikasi.'
         : 'Data dinyatakan benar dan konfirmasi verifikasi telah dikirim.'
-    )
-
-  const handleSendRevisionNote = (noteText) =>
-    run(
-      'revision',
-      async () => {
-        await savePenilaian(studentId, {
-          ...penilaianPayload(form),
-          catatan_revisi: noteText,
-        })
-        setRevisionModalOpen(false)
-      },
-      'Catatan revisi berhasil dikirim.'
     )
 
   const inputCls =
@@ -770,6 +704,23 @@ function StudentDetailView({ studentId, initialMode = 'periksa', onClose, onChan
                 </div>
               )}
 
+              {status === 'student_revision_requested' && student.catatanKoreksi && (
+                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-[11px] text-amber-900">
+                  <p className="font-bold">Mahasiswa melaporkan data salah:</p>
+                  <p className="mt-1 whitespace-pre-line">{student.catatanKoreksi}</p>
+                  <p className="mt-2 text-[10px] text-amber-700">
+                    Koreksi data penilaian di bawah, simpan, lalu kirim ulang konfirmasi ke mahasiswa.
+                  </p>
+                </div>
+              )}
+
+              {status === 'checking_akademik' && student.catatanInternal && (
+                <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-[11px] text-rose-900">
+                  <p className="font-bold">Dikembalikan oleh pejabat pengesah:</p>
+                  <p className="mt-1 whitespace-pre-line">{student.catatanInternal}</p>
+                </div>
+              )}
+
               {/* IDENTITAS MAHASISWA */}
               <section className="mt-4 overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white shadow-xs">
                 <div className="flex h-[44px] items-center gap-2 border-b border-[#E2E8F0] bg-[#EEF4FF] px-4 sm:px-5">
@@ -779,7 +730,7 @@ function StudentDetailView({ studentId, initialMode = 'periksa', onClose, onChan
                 <div className="grid grid-cols-1 gap-3.5 p-4 sm:grid-cols-2 sm:gap-4 sm:p-5">
                   <div>
                     <label className={labelCls}>NAMA LENGKAP</label>
-                    {isEdit ? (
+                    {IDENTITY_EDITABLE ? (
                       <input
                         type="text"
                         value={identityDraft.nama}
@@ -792,7 +743,7 @@ function StudentDetailView({ studentId, initialMode = 'periksa', onClose, onChan
                   </div>
                   <div>
                     <label className={labelCls}>NIM</label>
-                    {isEdit ? (
+                    {IDENTITY_EDITABLE ? (
                       <input
                         type="text"
                         value={identityDraft.nim}
@@ -805,7 +756,7 @@ function StudentDetailView({ studentId, initialMode = 'periksa', onClose, onChan
                   </div>
                   <div>
                     <label className={labelCls}>NO. WA</label>
-                    {isEdit ? (
+                    {IDENTITY_EDITABLE ? (
                       <input
                         type="text"
                         value={identityDraft.whatsapp}
@@ -818,7 +769,7 @@ function StudentDetailView({ studentId, initialMode = 'periksa', onClose, onChan
                   </div>
                   <div>
                     <label className={labelCls}>TEMPAT/TANGGAL LAHIR</label>
-                    {isEdit ? (
+                    {IDENTITY_EDITABLE ? (
                       <input
                         type="text"
                         value={identityDraft.ttl}
@@ -826,12 +777,14 @@ function StudentDetailView({ studentId, initialMode = 'periksa', onClose, onChan
                         className={inputCls}
                       />
                     ) : (
-                      <div className={readCls}>{detail.ttl || `${student.prodiNama} • ${formatDate(student.submittedAt, true)}`}</div>
+                      <div className={readCls}>
+                        {detail.ttl || `${student.prodiNama} • ${formatDate(student.submittedAt, true)}`}
+                      </div>
                     )}
                   </div>
                   <div>
                     <label className={labelCls}>DOSEN PEMBIMBING</label>
-                    {isEdit ? (
+                    {IDENTITY_EDITABLE ? (
                       <input
                         type="text"
                         value={identityDraft.dosenPembimbing}
@@ -844,7 +797,7 @@ function StudentDetailView({ studentId, initialMode = 'periksa', onClose, onChan
                   </div>
                   <div>
                     <label className={labelCls}>PREDIKAT KELULUSAN</label>
-                    {isEdit || isPeriksa ? (
+                    {IDENTITY_EDITABLE ? (
                       <input
                         type="text"
                         value={identityDraft.predikat}
@@ -858,7 +811,7 @@ function StudentDetailView({ studentId, initialMode = 'periksa', onClose, onChan
                   </div>
                   <div className="sm:col-span-2">
                     <label className={labelCls}>TAUTAN (LINK) VIDEO PRESENTASI TUGAS AKHIR</label>
-                    {isEdit ? (
+                    {IDENTITY_EDITABLE ? (
                       <textarea
                         rows={2}
                         value={identityDraft.videoLink}
@@ -899,7 +852,7 @@ function StudentDetailView({ studentId, initialMode = 'periksa', onClose, onChan
                       key={doc.key}
                       document={doc}
                       index={idx}
-                      editMode={isEdit}
+                      editMode={IDENTITY_EDITABLE}
                       replacementFile={replacedFiles[doc.key]}
                       onSelectFile={(key, file) => setReplacedFiles((prev) => ({ ...prev, [key]: file }))}
                     />
@@ -919,7 +872,7 @@ function StudentDetailView({ studentId, initialMode = 'periksa', onClose, onChan
                     <Pencil size={15} className="text-[#0A477F]" />
                     <h3 className="text-[14px] font-bold text-[#0A477F]">Data Penilaian Yudisium</h3>
                   </div>
-                  {!editable && !isEdit && (
+                  {!editable && (
                     <span className="flex items-center gap-1 text-[10px] font-semibold text-[#64748B]">
                       <Lock size={11} /> Terkunci pada status ini
                     </span>
@@ -934,18 +887,32 @@ function StudentDetailView({ studentId, initialMode = 'periksa', onClose, onChan
                         <label className="flex h-[36px] cursor-pointer items-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-3 text-[11px] text-[#334155]">
                           <input
                             type="checkbox"
-                            disabled={!editable && !isEdit}
+                            disabled={!editable}
                             checked={Boolean(form[f.key])}
                             onChange={(e) => setForm({ ...form, [f.key]: e.target.checked })}
                             className="h-3.5 w-3.5 accent-[#0A477F]"
                           />
                           {form[f.key] ? 'Bebas pelanggaran' : 'Tidak bebas pelanggaran'}
                         </label>
+                      ) : f.type === 'select' ? (
+                        <select
+                          disabled={!editable}
+                          value={form[f.key]}
+                          onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                          className={inputCls}
+                        >
+                          <option value="">Pilih status...</option>
+                          {f.options.map(([val, label]) => (
+                            <option key={val} value={val}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
                       ) : (
                         <input
                           type={f.type}
                           step={f.step}
-                          disabled={!editable && !isEdit}
+                          disabled={!editable}
                           value={form[f.key]}
                           placeholder={f.placeholder}
                           onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
@@ -957,7 +924,7 @@ function StudentDetailView({ studentId, initialMode = 'periksa', onClose, onChan
                 </div>
               </section>
 
-              {/* FOOTER AKSI SESUAI MODE (PART 2) */}
+              {/* FOOTER AKSI SESUAI MODE */}
               {isEdit && (
                 <div className="mt-5 flex flex-wrap items-center justify-end gap-2.5">
                   <button
@@ -969,7 +936,7 @@ function StudentDetailView({ studentId, initialMode = 'periksa', onClose, onChan
                   </button>
                   <button
                     type="button"
-                    disabled={Boolean(busy)}
+                    disabled={Boolean(busy) || !editable}
                     onClick={handleSaveEdit}
                     className="inline-flex h-[36px] items-center gap-2 rounded-xl bg-[#0A477F] px-5 text-[11px] font-bold text-white hover:bg-[#083866] disabled:opacity-60"
                   >
@@ -981,14 +948,6 @@ function StudentDetailView({ studentId, initialMode = 'periksa', onClose, onChan
 
               {isPeriksa && (
                 <div className="mt-5 flex flex-col justify-end gap-2.5 sm:flex-row sm:flex-wrap sm:items-center">
-                  <button
-                    type="button"
-                    disabled={Boolean(busy)}
-                    onClick={() => setRevisionModalOpen(true)}
-                    className="inline-flex h-[36px] items-center justify-center gap-1.5 rounded-xl border border-[#FCA5A5] bg-white px-4 text-[11px] font-bold text-[#DC2626] hover:bg-[#FEF2F2] disabled:opacity-60"
-                  >
-                    <AlertCircle size={13} /> Data Salah / Catatan Revisi
-                  </button>
                   <button
                     type="button"
                     onClick={() => setMode('edit')}
@@ -1026,19 +985,12 @@ function StudentDetailView({ studentId, initialMode = 'periksa', onClose, onChan
           )}
         </div>
       </div>
-
-      <RevisionNoteModal
-        open={revisionModalOpen}
-        onClose={() => setRevisionModalOpen(false)}
-        onSubmit={handleSendRevisionNote}
-        busy={busy === 'revision'}
-      />
     </div>
   )
 }
 
 /* =========================================================
-   PERIODE YUDISIUM (SESUAI PART 1: KOSONG, BERJALAN, DITUTUP, COLLAPSE)
+   PERIODE YUDISIUM
 ========================================================= */
 const EMPTY_PERIOD = {
   form_id: '',
@@ -1090,7 +1042,6 @@ function PeriodSection({ events, forms, onReload }) {
     Boolean(form.tgl_yudisium)
 
   const buildBody = (activeFlag) => {
-    // Tanpa fallback ke ID palsu: event wajib terhubung ke form yang benar-benar ada
     const resolvedFormId = Number(form.form_id || current?.form_id || forms[0]?.id || 0)
     const nama = form.nama_event.trim()
     return {
@@ -1461,7 +1412,6 @@ export default function AdminPengajuanYudisium() {
     [baseList, search, prodi, status, dateFilter]
   )
 
-  // Live search hasil pencarian mahasiswa di Histori Pengajuan Yudisium (Part 2: Kosong Penuh-2 & -3)
   const historySearchMatches = useMemo(() => {
     const keyword = search.toLowerCase().trim()
     if (!keyword) return []
@@ -1496,7 +1446,8 @@ export default function AdminPengajuanYudisium() {
     resetFilters()
   }
 
-  const thCls = 'whitespace-nowrap px-4 py-3 text-left text-[8.5px] font-bold uppercase tracking-wider text-[#64748B] sm:px-5'
+  const thCls =
+    'whitespace-nowrap px-4 py-3 text-left text-[8.5px] font-bold uppercase tracking-wider text-[#64748B] sm:px-5'
 
   return (
     <div className="min-h-screen bg-[#F1F5F9] font-sans text-[#1E293B]">
@@ -1650,7 +1601,6 @@ export default function AdminPengajuanYudisium() {
               {/* SEARCH & FILTER BAR */}
               <div className="mt-4 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center">
                 {showingPeriods && historyList.length > 0 ? (
-                  /* SEARCH BAR + LIVE DROPDOWN HASIL PENCARIAN (PART 2) */
                   <div className="relative w-full">
                     <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
                     <input

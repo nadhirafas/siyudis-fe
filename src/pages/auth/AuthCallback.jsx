@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { saveUser, roleCategory, DASHBOARD_BY_CATEGORY } from '../../services/auth'
+import LoginPage from './LoginPage'
+
+// Kode OAuth Google hanya berlaku sekali. React StrictMode (dev) menjalankan effect dua kali,
+// jadi kode yang sudah diproses dicatat di luar komponen agar tidak ditukar ulang.
+const handledCodes = new Set()
 
 function AuthCallback() {
   const navigate = useNavigate()
@@ -19,9 +24,27 @@ function AuthCallback() {
         // =========================================================
         // 1. AMBIL TOKEN DARI URL
         // =========================================================
-        const token = searchParams.get('token')
+        let token = searchParams.get('token')
+        const code = searchParams.get('code')
 
-        console.log('TOKEN:', token)
+        // Alur utama: Google mengarahkan ke halaman ini dengan ?code=...,
+        // lalu FE menukarnya ke GET /api/auth/google/callback (balasan: data.token).
+        if (!token && code) {
+          if (handledCodes.has(code)) return
+          handledCodes.add(code)
+
+          const apiBase = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+          const exchange = await fetch(
+            `${apiBase}/auth/google/callback?code=${encodeURIComponent(code)}`,
+            { method: 'GET', headers: { Accept: 'application/json' } }
+          )
+          const exchanged = await exchange.json().catch(() => ({}))
+
+          if (!exchange.ok) {
+            throw new Error(exchanged.message || 'Login Google gagal diproses')
+          }
+          token = exchanged?.data?.token
+        }
 
         if (!token) {
           throw new Error('Token login tidak ditemukan')
@@ -35,8 +58,6 @@ function AuthCallback() {
         // =========================================================
         const API_URL = import.meta.env.VITE_API_URL
 
-        console.log('API URL:', API_URL)
-
         const response = await fetch(`${API_URL}/me`, {
           method: 'GET',
           headers: {
@@ -45,11 +66,7 @@ function AuthCallback() {
           },
         })
 
-        console.log('STATUS:', response.status)
-
         const result = await response.json()
-
-        console.log('RESULT:', result)
 
         if (!response.ok) {
           throw new Error(
@@ -66,8 +83,6 @@ function AuthCallback() {
         // =========================================================
         const user = result.data
 
-        console.log('USER:', user)
-
         if (!user) {
           throw new Error('Data pengguna tidak ditemukan')
         }
@@ -78,7 +93,7 @@ function AuthCallback() {
         saveUser(user)
 
         // =========================================================
-        // 5. TENTUKAN ROLE
+        // 5. TENTUKAN ROLE & DASHBOARD
         // =========================================================
         const getRoleName = (userData) => {
           if (userData?.role?.name) {
@@ -97,32 +112,15 @@ function AuthCallback() {
         }
 
         const rawRole = getRoleName(user)
-
-        console.log('RAW ROLE:', rawRole)
-
-        const role = rawRole
-          .toLowerCase()
-          .trim()
-
-        console.log('NORMALIZED ROLE:', role)
-
-        // =========================================================
-        // 6. TENTUKAN DASHBOARD
-        // =========================================================
         const category = roleCategory(rawRole)
-        let dashboardPath = DASHBOARD_BY_CATEGORY[category] || '/dashboard'
+        const dashboardPath = DASHBOARD_BY_CATEGORY[category] || '/dashboard'
 
         if (!category) {
           console.warn('Role tidak dikenali:', rawRole)
         }
 
-        console.log(
-          'REDIRECT DASHBOARD:',
-          dashboardPath
-        )
-
         // =========================================================
-        // 7. REDIRECT
+        // 6. REDIRECT
         // =========================================================
         navigate(dashboardPath, {
           replace: true,
@@ -134,7 +132,8 @@ function AuthCallback() {
         )
 
         setError(
-          err.message || 'Login gagal'
+          err.message ||
+            'Akun Google yang Anda pilih bukan merupakan akun resmi Google Workspace UGM.'
         )
       }
     }
@@ -143,80 +142,18 @@ function AuthCallback() {
   }, [navigate, searchParams])
 
   // =============================================================
-  // ERROR SCREEN (TAMPILAN AKSES DITOLAK YANG RAPI)
+  // ERROR SCREEN -> TAMPILKAN LOGIN PAGE DENGAN STATE DENIED
   // =============================================================
   if (error) {
-    return (
-      <div className="min-h-screen bg-[#F3F7FB] flex flex-col justify-between font-sans">
-        <main className="flex-1 flex items-center justify-center px-5">
-          <div className="w-full max-w-[550px] rounded-2xl border border-[#E0E7EF] bg-white p-10 shadow-[0_18px_40px_rgba(7,84,140,0.12)]">
-            
-            {/* Header Card & Badge */}
-            <div className="flex items-start justify-between gap-4">
-              <h2 className="text-[25px] leading-8 font-bold tracking-[-0.5px] text-[#111827]">
-                Masuk ke SIYUDIS
-              </h2>
-              <span className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-[#FDECEC] px-3 py-1 text-[11px] font-bold text-[#C53030]">
-                <span className="text-[10px]">●</span>
-                Akses Ditolak
-              </span>
-            </div>
-
-            <p className="mt-2 text-[13px] leading-6 text-[#65758B]">
-              Satu pintu akses untuk seluruh civitas akademika DTEDI Sekolah Vokasi UGM.
-            </p>
-
-            {/* Error Box */}
-            <div className="mt-5 rounded-xl border border-[#F5C6C6] bg-[#FFF5F5] px-5 py-4.5">
-              <div className="flex gap-4">
-                <div className="pt-0.5 shrink-0">
-                  <div className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-[#DC2626] text-[11px] font-bold text-[#DC2626]">
-                    !
-                  </div>
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <p className="text-[14px] font-bold text-[#5F1111]">
-                    Autentikasi Gagal / Akses Ditolak
-                  </p>
-
-                  <p className="mt-3 text-[12px] leading-6 text-[#B42318]">
-                    {error}
-                  </p>
-
-                  <div className="my-3 h-px bg-[#F5C6C6]" />
-
-                  <p className="text-[11px] text-[#B42318]">
-                    Ketentuan domain akun SIYUDIS:
-                  </p>
-
-                  <p className="mt-1 text-[12px] leading-5 font-semibold text-[#6B1111]">
-                    Menggunakan akun Google dengan domain @ugm.ac.id / @mail.ugm.ac.id
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Tombol Coba Lagi */}
-            <button
-              type="button"
-              onClick={() => navigate('/LoginPage', { replace: true })}
-              className="w-full mt-6 h-14 rounded-xl border border-[#D9E2EC] bg-white flex items-center justify-center gap-2 text-[15px] font-semibold text-[#26354A] shadow-[0_1px_3px_rgba(0,0,0,0.08)] transition duration-200 hover:bg-[#FAFCFE] hover:border-[#C8D5E2]"
-            >
-              <span>Coba Masuk dengan Akun UGM Lain</span>
-            </button>
-          </div>
-        </main>
-      </div>
-    )
+    return <LoginPage initialError={error} />
   }
 
   // =============================================================
   // LOADING SCREEN
   // =============================================================
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#F3F7FB] px-5">
-      <div className="w-full max-w-sm rounded-2xl border border-[#E0E7EF] bg-white px-8 py-10 text-center shadow-[0_10px_30px_rgba(0,0,0,0.06)]">
+    <div className="flex min-h-screen items-center justify-center bg-[#F3F7FB] px-4 sm:px-5">
+      <div className="w-full max-w-sm rounded-2xl border border-[#E0E7EF] bg-white px-6 sm:px-8 py-8 sm:py-10 text-center shadow-[0_10px_30px_rgba(0,0,0,0.06)]">
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#E7F0F8]">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#07548C]">
             <span className="text-lg font-bold text-white">S</span>

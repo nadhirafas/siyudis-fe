@@ -19,7 +19,7 @@ import {
 
 import Sidebar from '../../components/Sidebar'
 import ProfileMenu from '../../components/ProfileMenu'
-import { getUser } from '../../services/auth'
+import { getUser, updateUser as updateSessionUser } from '../../services/auth'
 import { errorMessage } from '../../services/api'
 import { normalizeUser, roleKey, ROLE_LABEL } from '../../services/normalize'
 import {
@@ -31,7 +31,7 @@ import {
 } from '../../services/adminApi'
 
 // ==========================================
-// METADATA ROLE
+// METADATA ROLE (6 ROLE PATEN)
 // ==========================================
 const ROLE_META = {
   mahasiswa: {
@@ -47,7 +47,7 @@ const ROLE_META = {
   },
   kaprodi: {
     icon: Shield,
-    desc: 'Approval per Berita Acara, e-signature',
+    desc: 'Approval per mahasiswa, e-signature',
     tags: ['Approval Berita Acara', 'E-Signature']
   },
   manit: {
@@ -66,6 +66,9 @@ const ROLE_META = {
     tags: ['Semua Akses Staf Akademik', 'Pengaturan Sistem']
   }
 }
+
+const ROLE_ORDER = ['mahasiswa', 'staf_akademik', 'kaprodi', 'manit', 'kadep', 'super_admin']
+const MULTI_ROLE_ALLOWED = new Set(['super_admin', 'staf_akademik'])
 
 const inputCls =
   'w-full rounded-xl border border-slate-200 px-3.5 py-2 text-xs outline-none focus:border-blue-500 bg-white'
@@ -92,8 +95,135 @@ const TAB_TO_KEY = {
 }
 
 const PAGE_SIZE = 15
-const EMPTY_FORM = { nama: '', email: '', role_id: '', program_studi_id: '' }
-const EMPTY_ROLE_FORM = { nama: '', deskripsi: '', permissions: [] }
+const EMPTY_FORM = { nama: '', email: '', role_id: '', role_ids: [], program_studi_id: '' }
+
+function getRoleKeysForUser(user, allRoles = []) {
+  const keys = new Set()
+
+  if (Array.isArray(user.roles)) {
+    user.roles.forEach((r) => {
+      const raw = typeof r === 'string' ? r : r?.name ?? r?.nama ?? r?.nama_role ?? ''
+      const k = roleKey(raw)
+      if (k) keys.add(k)
+    })
+  }
+
+  if (Array.isArray(user.roleIds)) {
+    user.roleIds.forEach((id) => {
+      const found = allRoles.find((r) => String(r.id) === String(id))
+      const raw = found?.name ?? found?.nama ?? found?.nama_role ?? ''
+      const k = roleKey(raw)
+      if (k) keys.add(k)
+    })
+  }
+
+  const singleKey = roleKey(user.roleName)
+  if (singleKey) keys.add(singleKey)
+
+  return Array.from(keys)
+}
+
+function getInitialRoleIdsForUser(user, allRoles = []) {
+  const ids = new Set()
+  const source = user.raw || user
+
+  const candidateArrays = [
+    user.roleIds,
+    user.roles,
+    source.role_ids,
+    source.roles,
+    source.user_roles,
+    source.role_names,
+  ]
+
+  candidateArrays.forEach((arr) => {
+    if (!Array.isArray(arr)) return
+    arr.forEach((item) => {
+      if (item === undefined || item === null || item === '') return
+      if (typeof item === 'object') {
+        const objId = item.id ?? item.role_id
+        if (objId !== undefined && objId !== null) {
+          ids.add(String(objId))
+        }
+        const rawName = item.name || item.nama || item.nama_role || item.slug || ''
+        const matched = allRoles.find(
+          (ar) => roleKey(ar.name ?? ar.nama ?? ar.nama_role ?? '') === roleKey(rawName)
+        )
+        if (matched) ids.add(String(matched.id))
+      } else {
+        const byId = allRoles.find((ar) => String(ar.id) === String(item))
+        if (byId) {
+          ids.add(String(byId.id))
+          return
+        }
+        const byName = allRoles.find(
+          (ar) => roleKey(ar.name ?? ar.nama ?? ar.nama_role ?? '') === roleKey(String(item))
+        )
+        if (byName) ids.add(String(byName.id))
+      }
+    })
+  })
+
+  if (ids.size === 0) {
+    const singleId = user.roleId ?? source.role_id
+    if (singleId !== undefined && singleId !== null && String(singleId) !== '') {
+      ids.add(String(singleId))
+    } else {
+      const singleKey = roleKey(user.roleName || source.role_name || '')
+      if (singleKey) {
+        const matched = allRoles.find(
+          (ar) => roleKey(ar.name ?? ar.nama ?? ar.nama_role ?? '') === singleKey
+        )
+        if (matched) ids.add(String(matched.id))
+      }
+    }
+  }
+
+  const arr = Array.from(ids)
+  const keys = arr
+    .map((id) => {
+      const found = allRoles.find((r) => String(r.id) === String(id))
+      return roleKey(found?.name ?? found?.nama ?? found?.nama_role ?? '')
+    })
+    .filter(Boolean)
+
+  if (keys.length > 1 && keys.some((k) => !MULTI_ROLE_ALLOWED.has(k))) {
+    return arr.slice(0, 1)
+  }
+
+  return arr
+}
+
+function RoleOptionItem({ r, checked, onToggle }) {
+  const name = r.name ?? r.nama ?? r.nama_role ?? ''
+  const key = roleKey(name)
+  const meta = ROLE_META[key] || { icon: ShieldCheck, desc: r.deskripsi || '' }
+  const RoleIcon = meta.icon
+
+  return (
+    <label
+      className={`flex items-center gap-3.5 rounded-xl border px-4 py-3 cursor-pointer transition ${
+        checked
+          ? 'border-[#0B3A68]/50 bg-[#F8FAFC] shadow-2xs'
+          : 'border-slate-200/90 bg-white hover:border-slate-300'
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onToggle(e.target.checked)}
+        className="h-4 w-4 shrink-0 cursor-pointer rounded accent-[#0B3A68]"
+      />
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-slate-600">
+        <RoleIcon size={15} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <span className="block text-xs font-bold text-slate-900">{ROLE_LABEL[key] || name}</span>
+        <span className="block text-[11px] text-slate-500 leading-snug mt-0.5">{meta.desc}</span>
+      </div>
+    </label>
+  )
+}
 
 export default function ManajemenRole() {
   const currentUser = getUser()
@@ -115,11 +245,9 @@ export default function ManajemenRole() {
   const [isCreateUserOpen, setIsCreateUserOpen] = useState(false)
   const [createUserForm, setCreateUserForm] = useState(EMPTY_FORM)
 
-  const [isCreateRoleOpen, setIsCreateRoleOpen] = useState(false)
-  const [createRoleForm, setCreateRoleForm] = useState(EMPTY_ROLE_FORM)
-
   const [selectedUserModal, setSelectedUserModal] = useState(null)
   const [editForm, setEditForm] = useState(EMPTY_FORM)
+  const [roleSelectionError, setRoleSelectionError] = useState('')
   const [confirmDeactivate, setConfirmDeactivate] = useState(false)
 
   const flash = (type, text) => {
@@ -156,83 +284,191 @@ export default function ManajemenRole() {
 
   const prodiLabel = (u) => u.prodiKode || u.prodiNama || 'Semua Prodi'
 
-  const roleNameById = (id) => {
-    const r = roles.find((x) => String(x.id) === String(id))
-    return r ? r.name ?? r.nama ?? r.nama_role ?? '' : ''
-  }
+  const sortedRoles = useMemo(() => {
+    return [...roles].sort((a, b) => {
+      const ka = roleKey(a.name ?? a.nama ?? a.nama_role ?? '')
+      const kb = roleKey(b.name ?? b.nama ?? b.nama_role ?? '')
+      const ia = ROLE_ORDER.indexOf(ka)
+      const ib = ROLE_ORDER.indexOf(kb)
+      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
+    })
+  }, [roles])
+
+  const { mahasiswaRoles, staffRoles } = useMemo(() => {
+    const mhs = []
+    const staff = []
+    sortedRoles.forEach((r) => {
+      const name = r.name ?? r.nama ?? r.nama_role ?? ''
+      if (roleKey(name) === 'mahasiswa') mhs.push(r)
+      else staff.push(r)
+    })
+    return { mahasiswaRoles: mhs, staffRoles: staff }
+  }, [sortedRoles])
 
   const roleCards = useMemo(() => {
-    return roles.map((r) => {
+    return sortedRoles.map((r) => {
       const name = r.name ?? r.nama ?? r.nama_role ?? ''
       const key = roleKey(name)
       const meta = ROLE_META[key] || {
         icon: Shield,
-        desc: r.deskripsi || 'Role kustom sistem',
-        tags: r.permissions || ['Akses Kustom']
+        desc: r.deskripsi || '',
+        tags: r.permissions || []
       }
+      const count = users.filter((u) => {
+        const uKeys = getRoleKeysForUser(u, roles)
+        const initialIds = getInitialRoleIdsForUser(u, roles)
+        return uKeys.includes(key) || initialIds.includes(String(r.id))
+      }).length
+
       return {
         id: r.id,
         key,
-        isCustom: !ROLE_META[key],
         name: ROLE_LABEL[key] || name,
-        count: users.filter((u) => String(u.roleId) === String(r.id)).length,
+        count,
         ...meta
       }
     })
-  }, [roles, users])
+  }, [sortedRoles, users, roles])
 
   const filterCounts = useMemo(() => {
     const counts = { Semua: users.length, Mahasiswa: 0, 'Staf Akademik': 0, Kaprodi: 0, Manit: 0, Kadep: 0 }
     users.forEach((u) => {
-      const k = roleKey(u.roleName)
-      if (k === 'mahasiswa') counts.Mahasiswa++
-      if (k === 'staf_akademik') counts['Staf Akademik']++
-      if (k === 'kaprodi') counts.Kaprodi++
-      if (k === 'manit') counts.Manit++
-      if (k === 'kadep') counts.Kadep++
+      const uKeys = getRoleKeysForUser(u, roles)
+      if (uKeys.includes('mahasiswa')) counts.Mahasiswa++
+      if (uKeys.includes('staf_akademik')) counts['Staf Akademik']++
+      if (uKeys.includes('kaprodi')) counts.Kaprodi++
+      if (uKeys.includes('manit')) counts.Manit++
+      if (uKeys.includes('kadep')) counts.Kadep++
     })
     return counts
-  }, [users])
+  }, [users, roles])
 
   const filteredUsers = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
     return users.filter((u) => {
-      const matchesTab = activeTabFilter === 'Semua' || roleKey(u.roleName) === TAB_TO_KEY[activeTabFilter]
+      const uKeys = getRoleKeysForUser(u, roles)
+      const matchesTab = activeTabFilter === 'Semua' || uKeys.includes(TAB_TO_KEY[activeTabFilter])
       const matchesSearch =
         !q || u.nama.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.nim?.toLowerCase().includes(q)
       return matchesTab && matchesSearch
     })
-  }, [users, activeTabFilter, searchQuery])
+  }, [users, roles, activeTabFilter, searchQuery])
 
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
   const pagedUsers = filteredUsers.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
 
   const handleOpenUserModal = (user) => {
+    const initialIds = getInitialRoleIdsForUser(user, roles)
+    setRoleSelectionError('')
     setSelectedUserModal(user)
     setEditForm({
       nama: user.nama,
       email: user.email,
-      role_id: user.roleId ?? '',
+      role_id: initialIds[0] || '',
+      role_ids: initialIds,
       program_studi_id: user.prodiId ?? '',
-      is_active: user.is_active ?? true
+      is_active: user.is_active !== false
     })
   }
+
+  const handleToggleUserRole = (roleId, isChecked) => {
+    const strId = String(roleId)
+    const currentIds = Array.isArray(editForm.role_ids)
+      ? editForm.role_ids.map(String)
+      : editForm.role_id
+      ? [String(editForm.role_id)]
+      : []
+
+    const nextSet = new Set(currentIds)
+    if (isChecked) {
+      nextSet.add(strId)
+    } else {
+      nextSet.delete(strId)
+    }
+
+    const nextIds = Array.from(nextSet)
+    const nextKeys = nextIds
+      .map((id) => {
+        const found = roles.find((r) => String(r.id) === String(id))
+        return roleKey(found?.name ?? found?.nama ?? found?.nama_role ?? '')
+      })
+      .filter(Boolean)
+
+    // Jika lebih dari 1 role dipilih, hanya boleh kombinasi super_admin + staf_akademik
+    if (nextIds.length > 1 && nextKeys.some((k) => !MULTI_ROLE_ALLOWED.has(k))) {
+      setRoleSelectionError('Multi-role hanya diizinkan untuk kombinasi Super Admin dan Staf Akademik.')
+      return
+    }
+
+    setRoleSelectionError('')
+    setEditForm((prev) => ({
+      ...prev,
+      role_id: nextIds[0] || '',
+      role_ids: nextIds
+    }))
+  }
+
+  const selectedRoleKeys = useMemo(() => {
+    const ids =
+      Array.isArray(editForm.role_ids) && editForm.role_ids.length > 0
+        ? editForm.role_ids
+        : editForm.role_id
+        ? [editForm.role_id]
+        : []
+
+    return ids
+      .map((id) => {
+        const found = roles.find((r) => String(r.id) === String(id))
+        const raw = found?.name ?? found?.nama ?? found?.nama_role ?? ''
+        return roleKey(raw)
+      })
+      .filter(Boolean)
+  }, [editForm.role_ids, editForm.role_id, roles])
+
+  const hasSuperAdminSelected = selectedRoleKeys.includes('super_admin')
 
   const handleSaveUser = async () => {
     if (!selectedUserModal) return
     if (!editForm.nama.trim()) return flash('error', 'Nama wajib diisi.')
-    if (!editForm.role_id) return flash('error', 'Pilih role pengguna.')
+
+    const finalIds = (
+      Array.isArray(editForm.role_ids) && editForm.role_ids.length > 0
+        ? editForm.role_ids
+        : editForm.role_id
+        ? [editForm.role_id]
+        : []
+    ).map((id) => Number(id))
+
+    if (finalIds.length === 0) return flash('error', 'Pilih minimal satu role pengguna.')
+
+    if (finalIds.length > 1 && selectedRoleKeys.some((k) => !MULTI_ROLE_ALLOWED.has(k))) {
+      const msg = 'Multi-role hanya diizinkan untuk kombinasi Super Admin dan Staf Akademik.'
+      setRoleSelectionError(msg)
+      return flash('error', msg)
+    }
 
     setSaving(true)
     try {
       await updateUser(selectedUserModal.id, {
         nama: editForm.nama.trim(),
-        role_id: Number(editForm.role_id),
-        program_studi_id: editForm.program_studi_id ? Number(editForm.program_studi_id) : null,
+        role_id: finalIds[0],
+        role_ids: finalIds,
+        program_studi_id: editForm.program_studi_id ? Number(editForm.program_studi_id) : null
       })
+
+      if (String(selectedUserModal.id) === String(currentUser?.id)) {
+        updateSessionUser({
+          nama: editForm.nama.trim(),
+          role_id: finalIds[0],
+          role_ids: finalIds,
+          roles: selectedRoleKeys,
+        })
+      }
+
       setSelectedUserModal(null)
-      flash('success', `Perubahan untuk ${editForm.nama} berhasil disimpan.`)
+      setRoleSelectionError('')
+      flash('success', `Perubahan role untuk ${editForm.nama} berhasil disimpan.`)
       await loadAll()
     } catch (err) {
       flash('error', errorMessage(err, 'Gagal menyimpan perubahan pengguna'))
@@ -241,15 +477,13 @@ export default function ManajemenRole() {
     }
   }
 
-  // TODO: endpoint belum ada — API pengguna (PUT /admin/users/{id}) hanya menerima nama, role_id, program_studi_id.
-  // Belum ada field/endpoint untuk menonaktifkan atau mengaktifkan akun, jadi tidak ada panggilan API di sini
-  // (sebelumnya tombol ini menampilkan "berhasil" padahal server mengabaikan is_active).
+  // TODO: endpoint belum ada — API pengguna (PUT /admin/users/{id}) hanya menerima nama, role_id, role_ids, program_studi_id.
   const handleToggleActive = () => {
     setConfirmDeactivate(false)
     flash('error', 'Nonaktifkan/aktifkan akun belum didukung oleh API backend. Status akun tidak diubah.')
   }
 
-  const assignableRoles = roles.filter((r) => roleKey(r.name ?? r.nama ?? r.nama_role ?? '') !== 'mahasiswa')
+  const assignableRoles = sortedRoles.filter((r) => roleKey(r.name ?? r.nama ?? r.nama_role ?? '') !== 'mahasiswa')
 
   const handleCreateUser = async () => {
     if (!createUserForm.nama.trim() || !createUserForm.email.trim() || !createUserForm.role_id) {
@@ -261,6 +495,7 @@ export default function ManajemenRole() {
         nama: createUserForm.nama.trim(),
         email: createUserForm.email.trim(),
         role_id: Number(createUserForm.role_id),
+        role_ids: [Number(createUserForm.role_id)],
         program_studi_id: createUserForm.program_studi_id ? Number(createUserForm.program_studi_id) : null
       })
       setIsCreateUserOpen(false)
@@ -274,18 +509,6 @@ export default function ManajemenRole() {
     }
   }
 
-  // TODO: endpoint belum ada — Postman hanya punya GET /admin/roles (role bawaan, tidak bisa ditambah dari UI).
-  // Sebelumnya handler ini menampilkan "berhasil" tanpa memanggil API apa pun.
-  const handleCreateRole = () => {
-    if (!createRoleForm.nama.trim()) {
-      return flash('error', 'Nama role wajib diisi.')
-    }
-    setIsCreateRoleOpen(false)
-    setCreateRoleForm(EMPTY_ROLE_FORM)
-    flash('error', 'Penambahan role baru belum didukung oleh API backend. Role belum dibuat.')
-  }
-
-  // HEADER BAR DENGAN PADDING RESPONSIVE AGAR TIDAK TERTUTUP HAMBURGER
   const headerBar = (
     <header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-[#E2E8F0] bg-white px-4 lg:px-8 pl-14 lg:pl-8">
       <div>
@@ -344,25 +567,13 @@ export default function ManajemenRole() {
             </div>
           )}
 
-          {/* ROLE PENGGUNA SECTION */}
+          {/* ROLE PENGGUNA SECTION (6 ROLE PATEN) */}
           <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">Role Pengguna</h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  5 role bawaan aktif di sistem. Role bawaan tidak dapat dihapus.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setCreateRoleForm(EMPTY_ROLE_FORM)
-                  setIsCreateRoleOpen(true)
-                }}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-[#0B3A68] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#072F57] transition shadow-2xs"
-              >
-                <Plus size={16} /> Tambah Role Baru
-              </button>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Role Pengguna</h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                6 role bawaan aktif di sistem. Role bawaan tidak dapat ditambah atau dihapus.
+              </p>
             </div>
 
             {loading ? (
@@ -407,14 +618,6 @@ export default function ManajemenRole() {
                     </div>
                   )
                 })}
-
-                <div className="flex min-h-[135px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-[#FAFCFF] p-4 text-center">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-400 mb-2">
-                    <Plus size={16} />
-                  </div>
-                  <h4 className="text-xs font-bold text-slate-700">Belum ada role kustom</h4>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Role baru akan muncul di sini setelah dibuat.</p>
-                </div>
               </div>
             )}
           </div>
@@ -423,7 +626,7 @@ export default function ManajemenRole() {
           <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Pengguna & Role</h3>
+                <h3 className="text-sm font-bold text-slate-900">Pengguna &amp; Role</h3>
                 <p className="text-xs text-slate-400 mt-0.5">Daftar seluruh akun internal dan role yang dimiliki.</p>
               </div>
               <button
@@ -510,8 +713,10 @@ export default function ManajemenRole() {
                     </tr>
                   )}
                   {pagedUsers.map((u) => {
-                    const key = roleKey(u.roleName)
+                    const uKeys = getRoleKeysForUser(u, roles)
+                    const displayKeys = uKeys.length ? uKeys : [roleKey(u.roleName)].filter(Boolean)
                     const isActive = u.is_active !== false
+
                     return (
                       <tr key={u.id} className="hover:bg-slate-50/60 transition">
                         <td className="px-4 py-3.5">
@@ -527,16 +732,25 @@ export default function ManajemenRole() {
                         </td>
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span
-                              className={`rounded-md px-2.5 py-1 text-[10px] font-bold ${
-                                key === 'mahasiswa' || key === 'super_admin'
-                                  ? 'bg-amber-100/80 text-amber-800'
-                                  : 'bg-blue-100/80 text-blue-900'
-                              }`}
-                            >
-                              {ROLE_LABEL[key] || u.roleName || '-'}
-                            </span>
-                            {key === 'mahasiswa' && (
+                            {displayKeys.length > 0 ? (
+                              displayKeys.map((k) => (
+                                <span
+                                  key={k}
+                                  className={`rounded-md px-2.5 py-1 text-[10px] font-bold ${
+                                    k === 'mahasiswa' || k === 'super_admin'
+                                      ? 'bg-amber-100/80 text-amber-800'
+                                      : 'bg-blue-100/80 text-blue-900'
+                                  }`}
+                                >
+                                  {ROLE_LABEL[k] || u.roleName || k}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="rounded-md bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-500">
+                                {u.roleName || '-'}
+                              </span>
+                            )}
+                            {displayKeys.includes('mahasiswa') && (
                               <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">
                                 Default
                               </span>
@@ -600,13 +814,19 @@ export default function ManajemenRole() {
         </main>
       </div>
 
-      {/* MODAL: KELOLA PENGGUNA */}
+      {/* MODAL: KELOLA PENGGUNA (CHECKLIST) */}
       {selectedUserModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[2px]">
           <div className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 space-y-5">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-base font-bold text-slate-900">Kelola Pengguna</h3>
-              <button onClick={() => setSelectedUserModal(null)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100">
+              <button
+                onClick={() => {
+                  setSelectedUserModal(null)
+                  setRoleSelectionError('')
+                }}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
+              >
                 <X size={18} />
               </button>
             </div>
@@ -631,72 +851,91 @@ export default function ManajemenRole() {
               </span>
             </div>
 
-            <div className="space-y-2">
+            {/* ROLE YANG DIMILIKI (CHECKLIST) */}
+            <div className="space-y-3">
               <div>
                 <h4 className="text-xs font-bold text-slate-900">Role yang Dimiliki</h4>
-                <p className="text-[11px] text-slate-400">Satu pengguna bisa memegang lebih dari satu role sekaligus.</p>
+                <p className="text-[11px] text-slate-400">
+                  Centang role yang dimiliki. Multi-role hanya berlaku untuk kombinasi Super Admin dan Staf Akademik.
+                </p>
               </div>
-              {roles.map((r) => {
-                const name = r.name ?? r.nama ?? r.nama_role ?? ''
-                const key = roleKey(name)
-                const meta = ROLE_META[key] || { icon: ShieldCheck, desc: '' }
-                const RoleIcon = meta.icon
-                const checked = String(editForm.role_id) === String(r.id)
-                return (
-                  <label
-                    key={r.id}
-                    className={`flex items-start gap-3 rounded-xl border p-3.5 cursor-pointer transition ${
-                      checked ? 'border-blue-300 bg-blue-50/20' : 'border-slate-200 bg-white'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="role"
-                      checked={checked}
-                      onChange={() => setEditForm({ ...editForm, role_id: r.id })}
-                      className="mt-0.5 h-4 w-4 accent-[#0B3A68]"
-                    />
-                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-600 shrink-0">
-                      <RoleIcon size={16} />
-                    </div>
-                    <div>
-                      <span className="block text-xs font-bold text-slate-900">{ROLE_LABEL[key] || name}</span>
-                      <span className="text-[10px] text-slate-400">{meta.desc}</span>
-                    </div>
-                  </label>
-                )
-              })}
+
+              {roleSelectionError && (
+                <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-700">
+                  <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                  <span className="text-[11px] font-medium">{roleSelectionError}</span>
+                </div>
+              )}
+
+              {mahasiswaRoles.length > 0 && (
+                <div className="space-y-2">
+                  {mahasiswaRoles.map((r) => {
+                    const checked = (editForm.role_ids || []).map(String).includes(String(r.id))
+                    return (
+                      <RoleOptionItem
+                        key={r.id}
+                        r={r}
+                        checked={checked}
+                        onToggle={(isChecked) => handleToggleUserRole(r.id, isChecked)}
+                      />
+                    )
+                  })}
+                </div>
+              )}
+
+              {staffRoles.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    ROLE STAF &amp; PEJABAT
+                  </p>
+                  {staffRoles.map((r) => {
+                    const checked = (editForm.role_ids || []).map(String).includes(String(r.id))
+                    return (
+                      <RoleOptionItem
+                        key={r.id}
+                        r={r}
+                        checked={checked}
+                        onToggle={(isChecked) => handleToggleUserRole(r.id, isChecked)}
+                      />
+                    )
+                  })}
+                </div>
+              )}
             </div>
 
-            {roleKey(roleNameById(editForm.role_id)) === 'super_admin' && (
-              <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/60 p-3.5 text-amber-900">
+            {hasSuperAdminSelected && (
+              <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/70 p-3.5 text-amber-900">
                 <AlertCircle size={16} className="shrink-0 mt-0.5 text-amber-700" />
                 <span className="text-[11px] leading-relaxed">
-                  Memberi hak Super Admin akan memberi akses penuh ke Pengaturan Sistem (Manajemen Role, Form Pengajuan, Template Berita Acara) kepada pengguna ini.
+                  Memberi hak <strong className="font-semibold">Super Admin</strong> akan memberi akses penuh ke Pengaturan Sistem (Manajemen Role, Form Pengajuan, Template Berita Acara) kepada pengguna ini.
                 </span>
               </div>
             )}
 
-            <div className="rounded-xl border border-slate-100 bg-[#F8FAFC] p-4 space-y-2">
-              <h4 className="text-xs font-bold text-slate-900">Riwayat Aktivitas Akun</h4>
-              <div className="space-y-1.5 text-[11px] text-slate-600">
-                <div className="flex justify-between py-1 border-b border-slate-200/50">
+            {/* RIWAYAT AKTIVITAS AKUN */}
+            <div className="space-y-2 pt-1">
+              <div>
+                <h4 className="text-xs font-bold text-slate-900">Riwayat Aktivitas Akun</h4>
+                <p className="text-[11px] text-slate-400">Aktivitas terakhir pengguna ini di sistem.</p>
+              </div>
+              <div className="divide-y divide-slate-100 text-[11px] text-slate-600">
+                <div className="flex items-center justify-between py-2.5">
                   <span>Login ke sistem</span>
                   <span className="text-slate-400">28 Sep 2026, 09:02</span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-slate-200/50">
+                <div className="flex items-center justify-between py-2.5">
                   <span>Mengunggah tanda tangan elektronik baru</span>
                   <span className="text-slate-400">15 Sep 2026, 14:30</span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-slate-200/50">
+                <div className="flex items-center justify-between py-2.5">
                   <span>Akun pertama kali dibuat</span>
                   <span className="text-slate-400">28 Agu 2026, 11:45</span>
                 </div>
               </div>
             </div>
 
-            <p className="text-[10px] text-slate-400 italic">
-              - Menonaktifkan akun akan mencabut akses login. Riwayat approval yang pernah dilakukan tetap tersimpan.
+            <p className="text-[10px] text-slate-400">
+              Menonaktifkan akun akan mencabut akses login. Riwayat approval yang pernah dilakukan tetap tersimpan.
             </p>
 
             <div className="flex items-center justify-between pt-3 border-t border-slate-100">
@@ -711,7 +950,10 @@ export default function ManajemenRole() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setSelectedUserModal(null)}
+                  onClick={() => {
+                    setSelectedUserModal(null)
+                    setRoleSelectionError('')
+                  }}
                   className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
                 >
                   Batal
@@ -725,101 +967,6 @@ export default function ManajemenRole() {
                   {saving && <Loader2 size={13} className="animate-spin" />} Simpan Perubahan
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: TAMBAH ROLE BARU */}
-      {isCreateRoleOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[2px]">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">Tambah Role Baru</h3>
-                <p className="text-[11px] text-slate-400">
-                  Role baru bisa diberikan ke staf yang butuh akses di luar lima role bawaan yang sudah tersedia.
-                </p>
-              </div>
-              <button onClick={() => setIsCreateRoleOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="space-y-3.5">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Nama Role</label>
-                <input
-                  value={createRoleForm.nama}
-                  onChange={(e) => setCreateRoleForm({ ...createRoleForm, nama: e.target.value })}
-                  placeholder="Masukkan nama role"
-                  className={inputCls}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Deskripsi Singkat</label>
-                <input
-                  value={createRoleForm.deskripsi}
-                  onChange={(e) => setCreateRoleForm({ ...createRoleForm, deskripsi: e.target.value })}
-                  placeholder="Jelaskan tanggung jawab role ini secara singkat"
-                  className={inputCls}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-2">Hak Akses</label>
-                <div className="space-y-2">
-                  {[
-                    { id: 'lihat_mahasiswa', label: 'Lihat Daftar Mahasiswa', desc: 'Mengakses dashboard dan daftar pengajuan yudisium' },
-                    { id: 'verifikasi_dokumen', label: 'Verifikasi Dokumen', desc: 'Membuka dan memeriksa dokumen pengajuan mahasiswa' },
-                    { id: 'input_penilaian', label: 'Input Data Penilaian', desc: 'Mengisi & data penilaian yudisium' },
-                    { id: 'approve_mahasiswa', label: 'Approve Mahasiswa', desc: 'Memberikan persetujuan pada tahap tertentu' }
-                  ].map((perm) => {
-                    const checked = createRoleForm.permissions.includes(perm.id)
-                    return (
-                      <label
-                        key={perm.id}
-                        className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition ${
-                          checked ? 'border-blue-300 bg-blue-50/20' : 'border-slate-200 bg-white'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) => {
-                            const next = e.target.checked
-                              ? [...createRoleForm.permissions, perm.id]
-                              : createRoleForm.permissions.filter((p) => p !== perm.id)
-                            setCreateRoleForm({ ...createRoleForm, permissions: next })
-                          }}
-                          className="mt-0.5 h-4 w-4 rounded accent-[#0B3A68]"
-                        />
-                        <div>
-                          <span className="block text-xs font-bold text-slate-900">{perm.label}</span>
-                          <span className="text-[10px] text-slate-400">{perm.desc}</span>
-                        </div>
-                      </label>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
-              <button
-                type="button"
-                onClick={() => setIsCreateRoleOpen(false)}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                disabled={saving}
-                onClick={handleCreateRole}
-                className="flex items-center gap-1.5 rounded-xl bg-[#0B3A68] px-5 py-2 text-xs font-bold text-white hover:bg-[#072F57] transition disabled:opacity-60"
-              >
-                {saving && <Loader2 size={13} className="animate-spin" />} Simpan Role
-              </button>
             </div>
           </div>
         </div>

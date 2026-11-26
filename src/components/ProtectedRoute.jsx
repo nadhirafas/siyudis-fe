@@ -1,18 +1,35 @@
-import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import { getRoleName, getToken, getUser, homePathFor, isStafAkademik, isSuperAdmin } from '../services/auth'
+import { Navigate, Outlet } from 'react-router-dom'
+import {
+  getRoleName,
+  getToken,
+  getUser,
+  getUserRoles,
+  hasRole,
+  homePathFor,
+  isSuperAdmin,
+} from '../services/auth'
 
-// allowedRole: 'staf' (/admin/*, khusus Staf Akademik) | 'super_admin' (/super-admin/*)
+// allowedRole: 'staf' (/admin/*) | 'super_admin' (/super-admin/*) | role tunggal lainnya
 // Backend tetap menjadi penjaga utama; ini memastikan tiap role hanya melihat areanya.
 function ProtectedRoute({ allowedRole }) {
   const user = getUser()
-  const { pathname } = useLocation()
 
   if (!user || !getToken()) {
     return <Navigate to="/" replace />
   }
 
-  // Nama role belum bisa dibaca dari response /me -> jangan kunci pengguna
-  if (!getRoleName(user)) {
+  const roles = getUserRoles(user)
+
+  // Nama/daftar role belum bisa dibaca -> jangan kunci pengguna
+  if (!getRoleName(user) && roles.length === 0) {
+    return <Outlet />
+  }
+
+  // Area mahasiswa & approver (tidak mendukung multi-role)
+  if (['mahasiswa', 'kaprodi', 'manit', 'kadep'].includes(allowedRole)) {
+    if (!hasRole(user, allowedRole)) {
+      return <Navigate to={homePathFor(user)} replace />
+    }
     return <Outlet />
   }
 
@@ -21,11 +38,11 @@ function ProtectedRoute({ allowedRole }) {
   }
 
   if (allowedRole === 'staf') {
-    // Super Admin punya area sendiri (/super-admin/*) dengan 7 menu
-    if (isSuperAdmin(user)) {
-      return <Navigate to={pathname.replace(/^\/admin/, '/super-admin')} replace />
-    }
-    if (!isStafAkademik(user)) {
+    // Boleh diakses jika memiliki role staf_akademik (termasuk super_admin yang merangkap staf_akademik)
+    const canAccessStafArea =
+      hasRole(user, 'staf_akademik') || isSuperAdmin(user)
+
+    if (!canAccessStafArea) {
       return <Navigate to={homePathFor(user)} replace />
     }
   }

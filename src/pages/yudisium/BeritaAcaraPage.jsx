@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Home,
   FileText,
@@ -528,6 +528,14 @@ export default function BeritaAcaraPage() {
   // '3' (form catatan revisi) hanyalah tampilan lokal setelah mahasiswa menekan "Data Salah".
   const baseState = loading ? '' : beritaAcaraViewState(pengajuan)
   const viewState = showRevisionForm && baseState === '2' ? '3' : baseState
+
+  // Tombol "Data Salah" di email membuka halaman ini dengan ?aksi=salah -> langsung buka form catatan.
+  // "Data Benar" sengaja tidak mengonfirmasi otomatis: mahasiswa tetap melihat rekap lalu menekan tombolnya sendiri.
+  const [searchParams] = useSearchParams()
+  const aksiEmail = searchParams.get('aksi')
+  useEffect(() => {
+    if (aksiEmail === 'salah' && baseState === '2') setShowRevisionForm(true)
+  }, [aksiEmail, baseState])
   const { step: activeStep } = trackingState(pengajuan)
   const dates = trackingDates(pengajuan)
 
@@ -549,7 +557,7 @@ export default function BeritaAcaraPage() {
       docKey.startsWith('ba-')
         ? beritaAcaraId
           ? previewBeritaAcara(beritaAcaraId).then((d) => d?.html || '')
-          : // TODO: endpoint belum ada — GET /pengajuan/me belum terbukti mengembalikan ID Berita Acara
+          : // ID BA datang dari GET /pengajuan/me -> berita_acara[] (butuh patch BE be-integrasi)
             Promise.reject(new Error('ID Berita Acara belum tersedia dari server.'))
         : getRekap().then((r) => buildRekapHtml(r, { nama: identNama, nim: identNim, prodi: identProdi }))
 

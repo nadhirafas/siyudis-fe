@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate as useRouterNavigate } from 'react-router-dom'
 import { useAreaNavigate } from '../../components/useAreaNavigate'
 import {
   ChevronDown,
@@ -61,6 +62,7 @@ function computeStats(items, prodis) {
 
 function AdminDashboard() {
   const navigate = useAreaNavigate()
+  const routerNavigate = useRouterNavigate()
 
   const [user] = useState(() => getUser())
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -103,7 +105,7 @@ function AdminDashboard() {
   const handleLogout = async () => {
     await logout()
     setProfileOpen(false)
-    navigate('/')
+    routerNavigate('/')
   }
 
   return (
@@ -161,7 +163,6 @@ function AdminDashboard() {
               <ProfileDropdown
                 user={user}
                 displayName={displayName}
-                navigate={navigate}
                 handleLogout={handleLogout}
                 setProfileOpen={setProfileOpen}
               />
@@ -702,7 +703,8 @@ function ProfileAvatar({ photo, name = '', size = 'normal' }) {
   )
 }
 
-function ProfileDropdown({ user, displayName, navigate, handleLogout, setProfileOpen }) {
+function ProfileDropdown({ user, displayName, handleLogout, setProfileOpen }) {
+  const routerNavigate = useRouterNavigate()
   const email = user?.email || user?.email_ugm || ''
 
   return (
@@ -730,7 +732,7 @@ function ProfileDropdown({ user, displayName, navigate, handleLogout, setProfile
         type="button"
         onClick={() => {
           setProfileOpen(false)
-          navigate('/profile')
+          routerNavigate('/profile')
         }}
         className="flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-[#F7F9FC]"
       >

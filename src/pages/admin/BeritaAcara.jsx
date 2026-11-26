@@ -164,6 +164,10 @@ function statusKonfirmasi(p) {
 function getRevisionNotes(p) {
   const raw = p?.raw || p || {}
   const notes =
+    p?.catatanKoreksi ||
+    p?.catatanInternal ||
+    raw.catatan_koreksi_mahasiswa ||
+    raw.catatan_revisi_internal ||
     p?.catatanRevisi ||
     raw.catatan_revisi_mahasiswa ||
     raw.revision_notes ||
@@ -569,14 +573,16 @@ function StudentBeritaAcaraModal({
                   </label>
                   <BerkasLink url={docUrls.pa} label="Lembar Persetujuan PA" />
                 </div>
-                <input
-                  type="text"
+                <select
                   disabled={!editUnlocked}
                   value={form.judulPaStatus}
                   onChange={(e) => updateField('judulPaStatus', e.target.value)}
-                  placeholder="Contoh: Disetujui"
                   className={inputBase}
-                />
+                >
+                  <option value="">Pilih status...</option>
+                  <option value="disetujui">Disetujui</option>
+                  <option value="tidak_disetujui">Tidak disetujui</option>
+                </select>
               </div>
 
               {/* Jumlah Similarity Index */}

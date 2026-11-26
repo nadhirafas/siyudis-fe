@@ -181,7 +181,7 @@ export default function useYudisiumForm(mode = 'create') {
   const editBlocked = isEdit && pengajuan ? pengajuan.status !== 'submitted' : false
 
   const prodiOptions = useMemo(
-    () => prodiList.map((p) => ({ value: String(p.id), label: p.nama ?? p.nama_program_studi ?? '' })),
+    () => prodiList.map((p) => ({ value: String(p.id), label: p.nama ?? p.nama_prodi ?? p.nama_program_studi ?? '' })),
     [prodiList]
   )
 
@@ -203,7 +203,7 @@ export default function useYudisiumForm(mode = 'create') {
       }
       if (f.required && !v) {
         errs[key] = 'Kolom ini wajib diisi.'
-      } else if (v && String(f.type).toLowerCase() === 'url' && !/^https?:\/\/\S+$/i.test(v)) {
+      } else if (v && ['url', 'link'].includes(String(f.type).toLowerCase()) && !/^https?:\/\/\S+$/i.test(v)) {
         errs[key] = 'Tautan harus diawali http:// atau https://.'
       } else if (v && String(f.type).toLowerCase() === 'number' && Number.isNaN(Number(v))) {
         errs[key] = 'Isian harus berupa angka.'

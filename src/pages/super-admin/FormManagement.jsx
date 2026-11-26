@@ -78,9 +78,10 @@ function ModalWrapper({ title, onClose, children, maxWidth = 'max-w-2xl' }) {
 // TIPE DATA FIELD
 // ==========================================
 const DATA_TYPES = [
-  { value: 'text', label: 'Teks Singkat', group: 'identitas' },
+  // Nilai harus sama dengan enum BE: freetext, pdf, link, image, number, single_option
+  { value: 'freetext', label: 'Teks Singkat', group: 'identitas' },
   { value: 'number', label: 'Angka', group: 'identitas' },
-  { value: 'url', label: 'Tautan/Link', group: 'identitas' },
+  { value: 'link', label: 'Tautan/Link', group: 'identitas' },
   { value: 'pdf', label: 'Unggah PDF/PNG', group: 'dokumen' },
   { value: 'image', label: 'Unggah Gambar (JPG/PNG)', group: 'dokumen' }
 ]
@@ -97,7 +98,7 @@ function normalizeField(f) {
     id: f.id,
     name: f.field_name ?? '',
     description: f.field_desc ?? '',
-    type: f.data_type ?? 'text',
+    type: f.data_type ?? 'freetext',
     required: Boolean(f.is_required),
     visible: f.is_visible === undefined || f.is_visible === null ? true : Boolean(f.is_visible),
     order: f.order_position ?? 0,
@@ -111,7 +112,7 @@ function normalizeField(f) {
 const EMPTY_NEW = {
   name: '',
   description: '',
-  type: 'text',
+  type: 'freetext',
   required: true,
   visible: true,
   prodiId: '',
@@ -248,7 +249,7 @@ export default function SuperAdminFormManagement() {
 
   const handleOpenAddModal = (group) => {
     setSelectedGroup(group)
-    setNewFieldData({ ...EMPTY_NEW, type: group === GROUPS.DOKUMEN ? 'pdf' : 'text' })
+    setNewFieldData({ ...EMPTY_NEW, type: group === GROUPS.DOKUMEN ? 'pdf' : 'freetext' })
     setIsAddModalOpen(true)
   }
 

@@ -13,7 +13,8 @@ export function abbreviate(name = '') {
 }
 
 export function normalizeProdi(p = {}) {
-  const nama = p.nama ?? p.nama_program_studi ?? p.name ?? ''
+  // Kolom DB program_studi adalah `nama_prodi`; BE juga mengirim `nama` & `kode` turunan
+  const nama = p.nama ?? p.nama_prodi ?? p.nama_program_studi ?? p.name ?? ''
   return {
     id: p.id,
     nama,
@@ -25,7 +26,10 @@ export function normalizePengajuan(p = {}) {
   const user = p.user || p.mahasiswa || {}
   const prodi = normalizeProdi(p.program_studi || p.programStudi || user.program_studi || {})
   const prodiNama = prodi.nama || (typeof p.prodi === 'string' ? p.prodi : '') || '-'
-  const ba = p.berita_acara || p.beritaAcara || null
+  // BE mengirim relasi many-to-many (array). Setelah reject mahasiswa dilepas dari BA,
+  // jadi yang menempel hanya BA aktif/terakhir.
+  const baRaw = p.berita_acara || p.beritaAcara || null
+  const ba = Array.isArray(baRaw) ? baRaw[baRaw.length - 1] ?? null : baRaw
 
   return {
     raw: p,
@@ -42,6 +46,8 @@ export function normalizePengajuan(p = {}) {
     submittedAt: p.submitted_at ?? p.tanggal_pengajuan ?? p.created_at ?? null,
     beritaAcaraId: p.berita_acara_id ?? ba?.id ?? null,
     beritaAcaraStatus: ba?.status ?? null,
+    catatanKoreksi: p.catatan_koreksi_mahasiswa ?? '',
+    catatanInternal: p.catatan_revisi_internal ?? '',
   }
 }
 
@@ -50,14 +56,34 @@ export function normalizeUser(u = {}) {
   const roleName =
     typeof role === 'string' ? role : role?.name ?? role?.nama ?? role?.nama_role ?? u.role_name ?? ''
   const prodi = normalizeProdi(u.program_studi || u.programStudi || {})
+
+  const rawRoles = Array.isArray(u.roles)
+    ? u.roles
+    : Array.isArray(u.user_roles)
+    ? u.user_roles
+    : role
+    ? [role]
+    : roleName
+    ? [roleName]
+    : []
+
+  const roleIds = Array.isArray(u.role_ids)
+    ? u.role_ids.map(String)
+    : rawRoles
+        .map((r) => (r && typeof r === 'object' ? r.id ?? r.role_id : null))
+        .filter((id) => id !== null && id !== undefined)
+        .map(String)
+
   return {
     raw: u,
     id: u.id,
     nama: u.nama ?? u.name ?? '-',
     email: u.email ?? '',
     nim: u.nomor_induk ?? '',
-    roleId: u.role_id ?? role?.id ?? null,
+    roleId: u.role_id ?? role?.id ?? roleIds[0] ?? null,
     roleName,
+    roles: rawRoles,
+    roleIds,
     prodiId: u.program_studi_id ?? prodi.id ?? null,
     prodiKode: prodi.kode || '',
     prodiNama: prodi.nama || '',
